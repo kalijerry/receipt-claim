@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>报销助手</title>
+<style>
+:root{
+  --bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--mute:#6e6e73;--faint:#86868b;--line:#d2d2d7;--hair:#e8e8ed;
+  --blue:#0071e3;--link:#0066cc;--green:#1d8a3a;--green-soft:#e9f6ec;--orange:#b25000;--orange-soft:#fff4e5;
+  --red:#d70015;--red-soft:#fdeceb;--violet:#6e3fd8;--violet-soft:#f1ecfd;
+  --r-lg:22px;--r-md:14px;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Hiragino Sans GB","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.47 var(--font);letter-spacing:-.022em}
+button,input,select{font:inherit;letter-spacing:inherit;color:inherit}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;height:52px;background:rgba(251,251,253,.8);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid rgba(0,0,0,.08)}
+nav .in{max-width:1024px;margin:0 auto;height:100%;padding:0 22px;display:flex;align-items:center;gap:18px;font-size:13px}
+nav .brand{font-weight:600;font-size:15px;margin-right:auto}
+nav select{border:0;background:transparent;font-size:13px;color:var(--ink);padding:4px 2px;cursor:pointer;max-width:220px}
+nav .save{color:var(--faint);font-size:12px;min-width:64px;text-align:right}
+
+/* layout */
+.wrap{max-width:1024px;margin:0 auto;padding:0 22px}
+.hero{text-align:center;padding:64px 0 36px}
+.eyebrow{font-size:17px;color:var(--orange);font-weight:600;margin:0 0 6px}
+.hero h1{font-size:48px;line-height:1.08;font-weight:600;letter-spacing:-.003em;margin:0}
+.hero .sub{font-size:21px;color:var(--mute);margin:10px 0 0;line-height:1.38}
+.stats{display:flex;justify-content:center;gap:56px;margin-top:40px;flex-wrap:wrap}
+.stat .v{font-size:40px;font-weight:600;letter-spacing:-.01em;line-height:1.1}
+.stat .l{font-size:14px;color:var(--mute);margin-top:4px}
+.stat.main .v{color:var(--green)}
+.stat.over .v{color:var(--red)}
+.stat.small .v{font-size:28px;padding-top:10px}
+
+section{margin:0 0 22px}
+.tile{background:var(--card);border-radius:var(--r-lg);padding:40px 44px}
+.tile h2{font-size:32px;line-height:1.125;font-weight:600;margin:0;letter-spacing:.004em}
+.tile .lead{color:var(--mute);margin:8px 0 26px;font-size:17px}
+.num{color:var(--faint);font-weight:600;margin-right:10px}
+
+/* controls */
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:980px;padding:10px 22px;font-size:15px;cursor:pointer;background:var(--blue);color:#fff;transition:background .2s}
+.pill:hover{background:#0077ed}
+.pill.big{font-size:17px;padding:13px 28px}
+.pill.ghost{background:transparent;color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
+.pill.ghost:hover{background:rgba(0,113,227,.06)}
+.pill.gray{background:#e8e8ed;color:var(--ink)}
+.pill.gray:hover{background:#dedee3}
+.pill:disabled{background:#e8e8ed;color:var(--faint);box-shadow:none;cursor:not-allowed}
+.lnk{border:0;background:none;color:var(--link);cursor:pointer;padding:0;font-size:inherit}
+.lnk:hover{text-decoration:underline}
+.lnk.red{color:var(--red)}
+.field{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#fff;font-size:17px;min-width:0}
+.field:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 4px rgba(0,113,227,.15)}
+.field.sm{padding:7px 12px;font-size:15px;border-radius:10px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.mute{color:var(--mute)}.faint{color:var(--faint);font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:980px;padding:3px 11px;font-size:13px;font-weight:500;white-space:nowrap}
+.c-ok{background:var(--green-soft);color:var(--green)}.c-todo{background:var(--orange-soft);color:var(--orange)}
+.c-bad{background:var(--red-soft);color:var(--red)}.c-grp{background:var(--violet-soft);color:var(--violet)}
+.c-gray{background:#f0f0f2;color:var(--mute)}
+
+/* periods */
+.period{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+.period:first-child{border-top:1px solid var(--hair)}
+.period .idx{width:64px;color:var(--mute);font-size:15px}
+.period .days{margin-left:auto;font-weight:600;min-width:56px;text-align:right}
+.problems{margin:14px 0 0;padding:0;list-style:none;color:var(--red);font-size:15px}
+.rate{display:flex;align-items:center;gap:12px;margin-top:22px;flex-wrap:wrap}
+
+/* import */
+.drop{border:2px dashed var(--line);border-radius:var(--r-md);padding:44px 20px;text-align:center;cursor:pointer;transition:.2s}
+.drop:hover,.drop.on{border-color:var(--blue);background:rgba(0,113,227,.04)}
+.drop .big{font-size:21px;font-weight:600}
+.busy{display:none;align-items:center;gap:10px;color:var(--blue);font-size:15px;margin-top:14px}
+.busy.on{display:flex}
+.spin{width:18px;height:18px;border:2px solid rgba(0,113,227,.2);border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* review list */
+.progress{height:6px;background:#e8e8ed;border-radius:3px;overflow:hidden;margin:4px 0 22px}
+.progress i{display:block;height:100%;background:var(--green);border-radius:3px;transition:width .4s}
+.seg{display:inline-flex;background:#e8e8ed;border-radius:10px;padding:2px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:5px 14px;font-size:13px;cursor:pointer;color:var(--ink)}
+.seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:500}
+.toolbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:15px}
+.list{border-top:1px solid var(--hair)}
+.item{display:grid;grid-template-columns:28px 76px 1fr auto auto;gap:16px;align-items:center;padding:14px 6px;border-bottom:1px solid var(--hair);cursor:pointer;border-radius:12px;transition:background .15s}
+.item:hover{background:#fafafc}
+.item.off{opacity:.62}
+.thumbs{position:relative;width:64px;height:64px}
+.thumbs img{position:absolute;width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--hair);background:#f5f5f7}
+.thumbs img:nth-child(2){left:8px;top:8px;box-shadow:-2px -2px 6px rgba(0,0,0,.12)}
+.item .t{font-weight:600}
+.item .s{color:var(--mute);font-size:14px;margin-top:2px}
+.item .warn{color:var(--orange);font-size:13px;margin-top:2px}
+.item .amt{font-size:21px;font-weight:600;text-align:right;white-space:nowrap}
+.item input[type=checkbox]{width:18px;height:18px;accent-color:var(--blue)}
+.empty{text-align:center;color:var(--mute);padding:48px 0}
+
+/* export */
+.result{margin-top:22px;padding:20px 24px;border-radius:var(--r-md);background:var(--green-soft);display:none;font-size:15px}
+.gate{color:var(--orange);font-size:15px;margin-top:14px}
+
+/* review sheet */
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:none;align-items:stretch;justify-content:center;padding:28px}
+.sheet.on{display:flex}
+.sheet .box{background:#fff;border-radius:var(--r-lg);width:100%;max-width:1320px;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.sheet .top{display:flex;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--hair)}
+.sheet .top h3{margin:0;font-size:21px;font-weight:600}
+.sheet .close{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#e8e8ed;cursor:pointer;font-size:16px}
+.sheet .body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(340px,1fr);min-height:0}
+.imgs{background:#f5f5f7;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:22px}
+.imgs figure{margin:0}
+.imgs figcaption{font-size:13px;color:var(--mute);margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}
+/* image viewer: whole image visible by default; click / pinch / ⌘+scroll to zoom, drag to pan */
+.viewer{position:relative;overflow:hidden;background:#fff;border-radius:var(--r-md);height:calc(100vh - 300px);min-height:340px;
+  touch-action:none;user-select:none;-webkit-user-select:none;cursor:zoom-in}
+.viewer.zoomed{cursor:grab}
+.viewer.dragging{cursor:grabbing}
+.stage{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.stage img{display:block;width:100%;height:100%;pointer-events:none;-webkit-user-drag:none}
+.hls{position:absolute;inset:0}
+.ztools{position:absolute;right:10px;top:10px;display:flex;align-items:center;gap:2px;padding:3px;border-radius:980px;
+  background:rgba(255,255,255,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 2px 10px rgba(0,0,0,.15);cursor:default}
+.ztools button{border:0;background:transparent;min-width:30px;height:30px;border-radius:980px;cursor:pointer;font-size:17px;color:var(--ink);padding:0 8px}
+.ztools button:hover{background:rgba(0,0,0,.06)}
+.ztools .zl{font-size:12px;min-width:42px;text-align:center;color:var(--mute);font-variant-numeric:tabular-nums}
+.ztools .fitb{font-size:13px}
+.hl{position:absolute;border:calc(2px / var(--s,1)) solid;border-radius:calc(5px / var(--s,1));cursor:pointer;transition:box-shadow .2s}
+.hl.a{border-color:#0071e3;background:rgba(0,113,227,.10)}
+.hl.d{border-color:#1d8a3a;background:rgba(29,138,58,.10)}
+.hl:hover{box-shadow:0 0 0 4px rgba(0,0,0,.08)}
+.legend{display:inline-flex;gap:10px;align-items:center}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;border:2px solid;margin-right:3px;vertical-align:-1px}
+@media (min-width:1100px){
+  .imgs.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-content:start}
+  .imgs.two .imgtabs{grid-column:1 / -1}
+}
+.stale{margin-top:14px;padding:12px 16px;border-radius:12px;background:var(--orange-soft);color:var(--orange);font-size:15px;display:none}
+.form{overflow:auto;padding:24px 26px}
+.form h4{font-size:13px;color:var(--mute);font-weight:600;text-transform:none;margin:0 0 10px}
+.paid{background:var(--violet-soft);border-radius:var(--r-md);padding:18px 20px;margin-bottom:22px}
+.paid .row{margin-top:10px}
+.rec{border:1px solid var(--hair);border-radius:var(--r-md);padding:18px 20px;margin-bottom:16px}
+.rec.focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,113,227,.12)}
+.rec .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px}
+.rec .head b{font-size:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2 label,.full{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mute)}
+.full{margin-top:12px}
+.alts{font-size:13px;color:var(--mute);margin-top:6px}
+.alts button{border:0;background:#f0f0f2;border-radius:980px;padding:2px 10px;margin:0 4px 4px 0;cursor:pointer;font-size:13px}
+.alts button:hover{background:#e3e3e8}
+.warns{margin:12px 0 0;padding:0;list-style:none;font-size:14px;color:var(--orange)}
+.warns li{margin-top:4px}
+.switch{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px}
+.switch input{appearance:none;width:44px;height:26px;border-radius:13px;background:#e3e3e8;position:relative;cursor:pointer;transition:.2s;margin:0;flex:none}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}
+.switch input:checked{background:#34c759}
+.switch input:checked::after{left:20px}
+details{margin-top:12px;font-size:13px}
+details summary{color:var(--link);cursor:pointer}
+details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:10px 12px;font-size:12px;max-height:240px;overflow:auto;margin:8px 0 0}
+.sheet .foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--hair)}
+.sheet .foot .claimamt{font-size:15px;color:var(--mute);margin-right:auto}
+.sheet .foot .claimamt b{color:var(--ink);font-size:21px}
+.kbd{font-size:12px;color:var(--faint)}
+
+.imgtabs{display:flex;justify-content:center;margin-bottom:-6px}
+.scanbox{border-radius:var(--r-md);padding:14px 18px;margin-bottom:16px;font-size:14px}
+.scanbox.ok{background:var(--green-soft);color:var(--green)}
+.scanbox.bad{background:var(--orange-soft);color:var(--orange)}
+.scanbox ul{margin:6px 0 0;padding-left:18px}
+.scanstats{display:flex;gap:28px;margin-top:18px;font-size:15px;flex-wrap:wrap}
+.scanstats b{font-size:24px;display:block}
+.toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);background:rgba(29,29,31,.92);color:#fff;padding:12px 22px;border-radius:980px;font-size:15px;z-index:40;opacity:0;pointer-events:none;transition:.25s;max-width:88vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+@media (max-width:820px){
+  .hero{padding:40px 0 24px}.hero h1{font-size:34px}.hero .sub{font-size:17px}
+  .stats{gap:28px}.stat .v{font-size:30px}
+  .tile{padding:28px 22px}.tile h2{font-size:26px}
+  .item{grid-template-columns:24px 64px 1fr auto;row-gap:6px}
+  .item .amt{grid-column:4;grid-row:1;font-size:19px}
+  .item .st{grid-column:3 / 5;grid-row:2}
+  .sheet{padding:0}.sheet .box{border-radius:0}
+  .sheet .body{display:block;overflow:auto}
+  .imgs{overflow:visible}
+  .viewer{height:calc(100vh - 290px);min-height:240px;max-height:70vh}
+  .kbd{display:none}
+  .sheet .foot{flex-wrap:wrap;gap:8px;padding:12px 16px}
+  .sheet .foot .claimamt{flex-basis:100%}
+  .sheet .foot .pill{padding:9px 16px;font-size:15px}
+  #sConfirm{flex:1}
+  .grid2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<nav><div class="in">
+  <span class="brand">报销助手</span>
+  <select id="tripSel" aria-label="选择出差"></select>
+  <button class="lnk" id="newTrip">新建出差</button>
+  <span class="save" id="saveState"></span>
+</div></nav>
+
+<div id="welcome" class="wrap" style="display:none">
+  <div class="hero">
+    <p class="eyebrow">出差报销</p>
+    <h1>拍下票据，剩下的交给它。</h1>
+    <p class="sub">自动识别金额和日期，逐单核对后，<br>一键生成改好名的票据和带公式的报销表。</p>
+    <p style="margin-top:30px"><button class="pill big" id="newTrip2">新建一次出差</button></p>
+  </div>
+</div>
+
+<div id="tripUI" style="display:none">
+  <div class="wrap hero">
+    <p class="eyebrow">出差报销</p>
+    <h1 id="hTitle"></h1>
+    <p class="sub" id="hSub"></p>
+    <div class="stats">
+      <div class="stat main"><div class="v" id="kReimb">0</div><div class="l">应报销</div></div>
+      <div class="stat small"><div class="v" id="kCap">0</div><div class="l">可报销上限</div></div>
+      <div class="stat small"><div class="v" id="kSpent">0</div><div class="l">期内个人实付</div></div>
+      <div class="stat small over" id="overStat"><div class="v" id="kOver">0</div><div class="l">超出自付</div></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <section class="tile">
+      <h2><span class="num">1</span>报销日期</h2>
+      <p class="lead">一次出差可以分好几段，每段包含首尾两天。总额度 = 总天数 × 每日额度。</p>
+      <div id="periods"></div>
+      <p style="margin:16px 0 0"><button class="lnk" id="addPeriod">＋ 添加一段日期</button></p>
+      <div class="rate">
+        <span>每日额度</span>
+        <input type="number" class="field sm" id="rate" min="0" step="1" style="width:100px">
+        <select class="field sm" id="currency"><option value="GBP">£ 英镑</option><option value="EUR">€ 欧元</option><option value="USD">$ 美元</option><option value="CNY">¥ 人民币</option></select>
+      </div>
+      <ul class="problems" id="problems"></ul>
+    </section>
+
+    <section class="tile">
+      <h2><span class="num">2</span>导入票据</h2>
+      <p class="lead">支持 JPG、PNG、HEIC，可一次多选。原图会备份，同一张图重复导入会自动跳过。</p>
+      <div class="drop" id="drop">
+        <div class="big">把票据照片拖到这里</div>
+        <div class="mute" style="margin-top:6px">或 <span style="color:var(--link)">点击选择文件</span></div>
+        <input type="file" id="file" multiple accept="image/*,.heic,.heif" hidden>
+      </div>
+      <div class="row" style="margin-top:18px">
+        <span class="faint">也可以从本机文件夹导入</span>
+        <input type="text" class="field sm" id="folder" placeholder="/Users/…/票据文件夹" style="flex:1;min-width:220px">
+        <button class="pill gray" id="importFolder">导入</button>
+      </div>
+      <div class="busy" id="busy"><span class="spin"></span><span id="busyText">识别中…</span></div>
+    </section>
+
+    <section class="tile">
+      <h2><span class="num">3</span>逐单核对</h2>
+      <p class="lead">点开每一单，对照原图确认日期和金额。全部确认后才能生成报销表。</p>
+      <div class="row" style="justify-content:space-between">
+        <span id="progText" class="mute" style="font-size:15px"></span>
+        <button class="pill" id="startReview">开始核对</button>
+      </div>
+      <div class="progress"><i id="progBar" style="width:0"></i></div>
+      <div class="toolbar">
+        <div class="seg" id="filter"><button data-f="all" class="on">全部</button><button data-f="todo">待核对</button><button data-f="warn">需注意</button><button data-f="done">已确认</button></div>
+        <span style="flex:1"></span>
+        <span class="faint" id="selInfo">勾选相关票据（如总账单 + AA 收据）可合并为一单</span>
+        <button class="lnk" id="link" disabled>关联为一单</button>
+        <button class="lnk" id="unlink" disabled>取消关联</button>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="empty" id="noRows">还没有票据，先在第 2 步导入。</div>
+    </section>
+
+    <section class="tile">
+      <h2><span class="num">4</span>扫描版 <span class="faint" style="font-weight:400">可选</span></h2>
+      <p class="lead">一键把照片转成黑白扫描件：自动找边、矫正、去阴影。转完会对扫描件重新识别，确认金额、日期与你核对的一致、内容没有被裁掉，再按票据实际大小排进 A4 多页 PDF，保证打印清晰。</p>
+      <div class="row">
+        <button class="pill" id="scanBtn">一键生成扫描版</button>
+        <button class="lnk" id="rescanBtn" style="display:none">全部重新扫描</button>
+        <button class="lnk red" id="scanOff" style="display:none">不使用扫描版</button>
+        <span class="busy" id="scanBusy" style="margin:0"><span class="spin"></span>正在扫描并复核…</span>
+      </div>
+      <div class="scanstats" id="scanStats"></div>
+    </section>
+
+    <section class="tile" style="margin-bottom:64px">
+      <h2><span class="num">5</span>生成报销包</h2>
+      <p class="lead">出差文件夹里会有：<b>报销票据</b>（按「金额_日期」命名，关联票为 -1、-2，未计入的放在「未计入」子文件夹）、<b>报销表.xlsx</b>（含公式）和<b>原始票据</b>备份；做过第 4 步的话，还会有<b>扫描版票据</b>和 <b>A4 扫描版 PDF</b>。改了之后可以重新生成。</p>
+      <div class="row">
+        <button class="pill big" id="export" disabled>生成报销包</button>
+        <button class="lnk" id="openFolder">在访达中打开文件夹</button>
+      </div>
+      <div class="gate" id="gate"></div>
+      <div class="stale" id="stale">上次生成之后又有修改，请重新生成报销包。</div>
+      <div class="result" id="result"></div>
+    </section>
+  </div>
+</div>
+
+<div class="sheet" id="sheet"><div class="box">
+  <div class="top">
+    <h3 id="sTitle"></h3><span id="sChip"></span>
+    <button class="close" id="sClose" aria-label="关闭">✕</button>
+  </div>
+  <div class="body">
+    <div class="imgs" id="sImgs"></div>
+    <div class="form" id="sForm"></div>
+  </div>
+  <div class="foot">
+    <div class="claimamt" id="sAmt"></div>
+    <span class="kbd">← → 切换　+ − 0 缩放　回车 / ⌘回车 确认</span>
+    <button class="pill gray" id="sPrev">上一单</button>
+    <button class="pill gray" id="sNext">下一单</button>
+    <button class="pill big" id="sConfirm">确认无误</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SYM = {GBP:"£",EUR:"€",USD:"$",CNY:"¥"};
+let V = null;                 // latest view from the server
+let selected = new Set();     // receipt ids ticked in the list
+let filter = "all";
+let cur = null;               // receipt id anchoring the open review sheet
+
+const money = v => v==null ? "—" : (SYM[V?.trip.currency]||"") + Number(v).toFixed(2);
+const tripUrl = (sfx="") => "/api/trips/" + encodeURIComponent(V.trip.name) + sfx;
+const fmtDate = s => { if(!s) return "未知日期"; const [y,m,d]=s.split("-"); return `${y}年${+m}月${+d}日`; };
+const shortDate = s => { if(!s) return "?"; const [,m,d]=s.split("-"); return `${+m}月${+d}日`; };
+function toast(msg, ms=3000){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"), ms); }
+function busy(on, text){ $("#busy").classList.toggle("on", on); if(text) $("#busyText").textContent=text; }
+
+async function api(method, url, body, headers={}){
+  const bin = body instanceof ArrayBuffer;
+  const r = await fetch(url, {method, headers: bin ? headers : {"Content-Type":"application/json", ...headers},
+    body: body==null ? undefined : (bin ? body : JSON.stringify(body))});
+  const j = await r.json().catch(()=>({error:"服务器无响应，请确认程序仍在运行"}));
+  if(!r.ok) throw Object.assign(new Error(j.error || (j.problems||[]).join("；") || r.status), {data:j});
+  return j;
+}
+
+// ---------------- trips ----------------
+async function loadTrips(select){
+  const trips = await api("GET", "/api/trips");
+  const sel = $("#tripSel");
+  sel.innerHTML = trips.map(t=>`<option>${esc(t.name)}</option>`).join("");
+  sel.style.display = trips.length ? "" : "none";
+  let want = select; try{ want = want || localStorage.getItem("bx.trip"); }catch(e){}
+  if(want && trips.some(t=>t.name===want)) sel.value = want;
+  if(sel.value) return openTrip(sel.value);
+  $("#welcome").style.display=""; $("#tripUI").style.display="none";
+}
+async function openTrip(name){
+  selected.clear(); closeSheet();
+  render(await api("GET", "/api/trips/" + encodeURIComponent(name)));
+  try{ localStorage.setItem("bx.trip", name); }catch(e){}
+  $("#result").style.display="none";
+}
+$("#tripSel").onchange = e => openTrip(e.target.value);
+async function newTrip(){
+  const name = prompt("给这次出差起个名字（例如：2026年9月 伦敦培训）");
+  if(!name || !name.trim()) return;
+  try{ const v = await api("POST", "/api/trips", {name}); await loadTrips(v.trip.name); toast("已创建，先填写报销日期"); }
+  catch(e){ toast(e.message); }
+}
+$("#newTrip").onclick = newTrip; $("#newTrip2").onclick = newTrip;
+
+// ---------------- save ----------------
+function payload(){
+  return {periods: V.trip.periods, rate: Number($("#rate").value)||0, currency: $("#currency").value, groups: V.trip.groups,
+    receipts: V.trip.receipts.map(r=>({id:r.id, amount:r.amount, date:r.date, merchant:r.merchant, include:r.include,
+      exclude_reason:r.exclude_reason, group:r.group, note:r.note}))};
+}
+// Saves run one after another; confirming waits for them, so a confirmation always sees the latest values.
+let pendingSave = Promise.resolve();
+function save(){
+  pendingSave = pendingSave.then(async () => {
+    $("#saveState").textContent = "保存中…";
+    try{ render(await api("PUT", tripUrl(), payload())); $("#saveState").textContent = "已保存"; }
+    catch(e){
+      $("#saveState").textContent = "保存失败";
+      toast("保存失败：" + e.message, 6000);
+      try{ render(await api("GET", tripUrl())); }catch(_){}   // fall back to what the server has
+    }
+  });
+  return pendingSave;
+}
+function savedValue(el){
+  if(el.dataset.gpaid!=null) return V.trip.groups[curItem()?.group]?.paid;
+  const r = V.trip.receipts.find(x=>x.id===el.closest(".rec")?.dataset.id);
+  return r ? r[el.dataset.k] : el.value;
+}
+async function flushEdits(){
+  // commit the field being typed in, then wait for all saves. A browser only fires "change" on blur for
+  // edits made by typing, so compare with the saved value and push the change ourselves if they differ.
+  const a = document.activeElement;
+  if(a && $("#sForm").contains(a) && (a.dataset.k || a.dataset.gpaid!=null) && a.type!=="checkbox"
+     && String(savedValue(a) ?? "") !== a.value)
+    a.dispatchEvent(new Event("change", {bubbles:true}));
+  if(a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName)) a.blur();
+  await new Promise(r=>setTimeout(r,0));
+  await pendingSave;
+}
+
+// ---------------- 1. periods ----------------
+const days = p => { if(!p.start||!p.end) return 0; const n=(new Date(p.end)-new Date(p.start))/864e5+1; return n>0?n:0; };
+function renderPeriods(){
+  const ps = V.trip.periods;
+  $("#periods").innerHTML = ps.map((p,i)=>`<div class="period" data-i="${i}">
+      <span class="idx">第 ${i+1} 段</span>
+      <input type="date" class="field sm" data-k="start" value="${esc(p.start)}"><span class="mute">至</span>
+      <input type="date" class="field sm" data-k="end" value="${esc(p.end)}">
+      <span class="days">${days(p)} 天</span>
+      <button class="lnk red" data-del="${i}">删除</button></div>`).join("")
+    || `<p class="mute" style="margin:0">还没有日期。</p>`;
+  $("#rate").value = V.trip.rate; $("#currency").value = V.trip.currency;
+  $("#problems").innerHTML = V.problems.map(p=>`<li>${esc(p)}</li>`).join("");
+}
+$("#periods").addEventListener("change", e => {
+  const row = e.target.closest("[data-i]"); if(!row) return;
+  const p = V.trip.periods[row.dataset.i]; p[e.target.dataset.k] = e.target.value;
+  if(e.target.dataset.k==="start" && (!p.end || p.end < p.start)) p.end = p.start;
+  save();
+});
+$("#periods").addEventListener("click", e => {
+  if(e.target.dataset.del==null) return;
+  V.trip.periods.splice(+e.target.dataset.del, 1); save();
+});
+$("#addPeriod").onclick = () => {
+  const ps = V.trip.periods, last = ps[ps.length-1];
+  let start = "";
+  if(last && last.end){ const d = new Date(last.end); d.setDate(d.getDate()+2); start = d.toISOString().slice(0,10); }
+  ps.push({start, end: start}); save();
+};
+$("#rate").onchange = save; $("#currency").onchange = save;
+
+// ---------------- 2. import ----------------
+async function uploadFiles(files){
+  files = [...files]; if(!files.length) return;
+  let added = 0; const skipped = [];
+  for(let i=0;i<files.length;i++){
+    busy(true, `正在识别 ${i+1} / ${files.length}：${files[i].name}`);
+    try{
+      const v = await api("POST", tripUrl("/upload"), await files[i].arrayBuffer(),
+        {"X-Filename": encodeURIComponent(files[i].name), "Content-Type":"application/octet-stream"});
+      added += v.added; skipped.push(...v.skipped); render(v);
+    }catch(e){ skipped.push(files[i].name + "：" + e.message); }
+  }
+  busy(false); report(added, skipped);
+}
+function report(added, skipped){
+  toast(`新增 ${added} 张` + (skipped.length ? `，跳过 ${skipped.length} 个：${skipped.join("；")}` : "") + (added ? "。接下来逐单核对。" : ""), skipped.length?8000:3500);
+}
+const drop = $("#drop");
+drop.onclick = () => $("#file").click();
+$("#file").onchange = e => { uploadFiles(e.target.files); e.target.value=""; };
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add("on");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.remove("on");}));
+drop.addEventListener("drop", e => uploadFiles(e.dataTransfer.files));
+$("#importFolder").onclick = async () => {
+  const path = $("#folder").value.trim(); if(!path) return toast("请先填写文件夹路径");
+  busy(true, "正在识别…每张约 1 秒");
+  try{ const v = await api("POST", tripUrl("/import-folder"), {path}); render(v); report(v.added, v.skipped); }
+  catch(e){ toast(e.message, 5000); } finally{ busy(false); }
+};
+
+// ---------------- 3. review items ----------------
+// An "item" is one claim (单, possibly several linked receipts) or one excluded receipt.
+function items(){
+  const byId = Object.fromEntries(V.trip.receipts.map(r=>[r.id, r]));
+  const out = V.claims.map(c => ({kind:"claim", no:c.no, group: c.ids.length>1 ? c.group : null, amount:c.amount,
+    date:c.date, in_period:c.in_period, members:c.ids.map(id=>byId[id]), verified:c.verified}));
+  V.trip.receipts.filter(r=>!r._claim_no)
+    .sort((a,b)=>((a.date||"9999")+(a.time||"99:99")).localeCompare((b.date||"9999")+(b.time||"99:99")))
+    .forEach(r => out.push({kind:"excluded", no:null, group:null, amount:r.amount,
+      date:r.date, members:[r], verified:r._verified}));
+  return out;
+}
+function warnsOf(r){
+  const w = [...(r.ocr?.warnings||[])];
+  if(r.amount==null) w.unshift("缺少金额");
+  if(!r.date) w.unshift("缺少日期");
+  const hasLines = (r.ocr?.lines||[]).length > 0;
+  if(hasLines && r.amount!=null && !(r._hl?.amount||[]).length) w.push("票面上没找到这个金额，请再对一下原图");
+  if(hasLines && r.date && r.ocr?.date_source==="ocr" && !(r._hl?.date||[]).length) w.push("票面上没找到这个日期，请再对一下原图");
+  return w;
+}
+function itemWarns(it){
+  const w = it.members.flatMap(warnsOf);
+  if(it.kind==="claim" && it.date && !it.in_period) w.push("不在报销日期内，不计入合计");
+  return [...new Set(w)];
+}
+function chipOf(it){
+  if(it.verified) return `<span class="chip c-ok">✓ 已确认</span>`;
+  return `<span class="chip c-todo">待核对</span>`;
+}
+function scanNeeds(r){ return r.include && r._scan && r._scan.mode && !r._scan.ok && !r._scan.acked; }
+function attention(it){ return itemWarns(it).length > 0 || it.members.some(scanNeeds); }
+function passFilter(it){
+  return filter==="all" || (filter==="todo" && !it.verified) || (filter==="done" && it.verified)
+    || (filter==="warn" && attention(it));
+}
+function scanChip(it){
+  if(!V.scan_enabled) return "";
+  return it.members.some(scanNeeds) ? '<span class="chip c-todo">扫描版需比对</span> ' : "";
+}
+let imgMode = "orig";
+function renderList(){
+  const all = items();
+  const done = all.filter(i=>i.verified).length;
+  $("#progText").textContent = all.length ? `已核对 ${done} / ${all.length}` : "";
+  $("#progBar").style.width = all.length ? (done/all.length*100)+"%" : "0";
+  $("#startReview").textContent = done===all.length && all.length ? "重新查看" : (done ? "继续核对" : "开始核对");
+  $("#startReview").style.display = all.length ? "" : "none";
+  const shown = all.filter(passFilter);
+  $("#list").innerHTML = shown.map(it => {
+    const m0 = it.members[0], w = itemWarns(it);
+    const title = it.kind==="excluded" ? "未计入" : `#${it.no}`;
+    const sub = [shortDate(it.date), it.members.map(m=>m.merchant).filter(Boolean)[0] || "", it.group ? `关联 ${it.members.length} 张` : ""].filter(Boolean).join(" · ");
+    return `<div class="item ${it.kind==="excluded"||(it.date&&it.in_period===false)?"off":""}" data-open="${m0.id}">
+      <input type="checkbox" data-sel="${it.members.map(m=>m.id).join(",")}" ${it.members.every(m=>selected.has(m.id))?"checked":""} aria-label="选择">
+      <div class="thumbs">${it.members.slice(0,2).map(m=>`<img loading="lazy" src="${tripUrl("/thumb/"+m.id)}" alt="">`).join("")}</div>
+      <div><div class="t">${title} <span class="mute" style="font-weight:400">${esc(sub)}</span></div>
+        ${it.kind==="excluded" ? `<div class="s">${esc(m0.exclude_reason||"手动排除")}</div>` : ""}
+        ${!it.verified && w.length ? `<div class="warn">⚠ ${esc(w.join("；"))}</div>` : ""}</div>
+      <div class="amt">${money(it.amount)}</div>
+      <div class="st">${it.kind==="claim"&&it.date&&!it.in_period?'<span class="chip c-bad">期外</span> ':""}${it.group?'<span class="chip c-grp">关联单</span> ':""}${scanChip(it)}${chipOf(it)}</div>
+    </div>`;
+  }).join("");
+  $("#noRows").style.display = all.length ? "none" : "";
+  updateSel();
+}
+$("#filter").onclick = e => { const f=e.target.dataset.f; if(!f) return; filter=f;
+  [...$("#filter").children].forEach(b=>b.classList.toggle("on", b.dataset.f===f)); renderList(); };
+$("#list").addEventListener("click", e => {
+  if(e.target.dataset.sel!=null){
+    const ids = e.target.dataset.sel.split(",");
+    ids.forEach(id => e.target.checked ? selected.add(id) : selected.delete(id));
+    return updateSel();
+  }
+  const row = e.target.closest("[data-open]"); if(row) openSheet(row.dataset.open);
+});
+function updateSel(){
+  [...selected].forEach(id=>{ if(!V.trip.receipts.some(r=>r.id===id)) selected.delete(id); });
+  const sel = V.trip.receipts.filter(r=>selected.has(r.id));
+  $("#link").disabled = sel.length < 2;
+  $("#unlink").disabled = !sel.some(r=>r.group);
+  $("#selInfo").textContent = sel.length ? `已选 ${sel.length} 张票据` : "勾选相关票据（如总账单 + AA 收据）可合并为一单";
+}
+function linkIds(ids){
+  const sel = V.trip.receipts.filter(r=>ids.includes(r.id));
+  if(sel.length<2) return;
+  const dates = new Set(sel.map(r=>r.date).filter(Boolean));
+  if(dates.size>1 && !confirm("这些票据日期不一致，仍要合并为一单吗？（这一单的日期取最早一张）")) return false;
+  const gid = sel.find(r=>r.group)?.group || ("G" + (Math.max(0, ...Object.keys(V.trip.groups).map(k=>+k.slice(1)||0)) + 1));
+  const old = new Set(sel.map(r=>r.group).filter(g=>g && g!==gid));
+  const revived = V.trip.receipts.filter(r=>(ids.includes(r.id) || old.has(r.group)) && !r.include);
+  if(revived.length && !confirm(`其中 ${revived.length} 张目前是「未计入」（${revived.map(r=>r.exclude_reason||"手动排除").join("；")}）。\n关联后会恢复计入，确定吗？`)) return false;
+  V.trip.receipts.forEach(r=>{ if(ids.includes(r.id) || old.has(r.group)){ r.group = gid; r.include = true; r.exclude_reason = ""; } });
+  V.trip.groups[gid] = V.trip.groups[gid] || {paid: null};
+  return true;
+}
+function unlinkIds(ids){
+  V.trip.receipts.forEach(r=>{ if(ids.includes(r.id)) r.group = null; });
+  const cnt = {}; V.trip.receipts.forEach(r=>{ if(r.group) cnt[r.group]=(cnt[r.group]||0)+1; });
+  V.trip.receipts.forEach(r=>{ if(r.group && cnt[r.group]<2) r.group = null; });
+}
+$("#link").onclick = async () => {
+  if(!linkIds([...selected])) return;
+  selected.clear(); await save();
+  toast("已合并为一单，默认按最小一张（个人 AA 份额）计入，请点开核对");
+};
+$("#unlink").onclick = async () => { unlinkIds([...selected]); selected.clear(); await save(); };
+
+// ---------------- review sheet ----------------
+const hasId = id => it => it.members.some(m=>m.id===id);
+function curItem(){ return items().find(hasId(cur)); }
+function openSheet(id){ cur = id; $("#sheet").classList.add("on"); document.body.style.overflow="hidden"; renderSheet(true); }
+function closeSheet(){ cur = null; $("#sheet").classList.remove("on"); document.body.style.overflow=""; }
+$("#sClose").onclick = () => flushEdits().then(closeSheet);
+$("#sheet").addEventListener("click", e => { if(e.target.id==="sheet") closeSheet(); });
+
+function renderSheet(fresh){
+  const all = items(), idx = all.findIndex(hasId(cur)), it = all[idx];
+  if(!it){ return closeSheet(); }
+  const isGroup = !!it.group;
+  $("#sTitle").textContent = it.kind==="excluded" ? "未计入的票据" : `第 ${it.no} 单`;
+  $("#sChip").innerHTML = `${isGroup?'<span class="chip c-grp">关联 '+it.members.length+' 张，计为一单</span> ':""}${chipOf(it)} <span class="faint">${idx+1} / ${all.length}</span>`;
+
+  const hasScan = it.members.some(m=>m._scan && m._scan.mode);
+  if(!hasScan) imgMode = "orig";
+  const imgKey = it.members.map(m=>m.id+(m._scan?.mode||"")).join(",") + imgMode;
+  $("#sImgs").classList.toggle("two", it.members.length === 2);
+  if(fresh || $("#sImgs").dataset.ids !== imgKey){
+    $("#sImgs").dataset.ids = imgKey;
+    $("#sImgs").innerHTML = (hasScan ? `<div class="imgtabs"><div class="seg" id="imgSeg">
+        <button data-im="orig" class="${imgMode==="orig"?"on":""}">原图</button><button data-im="scan" class="${imgMode==="scan"?"on":""}">扫描版</button></div></div>` : "")
+      + it.members.map((m,i)=>{
+        const scan = imgMode==="scan" && m._scan?.mode;
+        const src = scan ? tripUrl("/scan/"+m.id)+"?v="+encodeURIComponent(m._scan.mode+(m.scan?.at||"")) : tripUrl("/image/"+m.id);
+        return `<figure>
+      <figcaption><span>票据 ${i+1}${it.members.length>1?" / "+it.members.length:""}　${esc(m.orig_name)}${scan?"（扫描版："+esc(m._scan.how)+"）":""}</span>
+        <span>${scan?"":`<span class="legend"><span><i style="border-color:#0071e3"></i>金额</span><span><i style="border-color:#1d8a3a"></i>日期</span></span>`}</span></figcaption>
+      <div class="viewer" data-pic="${m.id}" title="单击放大 / 还原，拖动平移，⌘+滚轮或双指捏合缩放">
+        <div class="stage"><img src="${src}" alt="票据图片"><div class="hls"></div></div>
+        <div class="ztools"><button data-zt="out" title="缩小">−</button><span class="zl">100%</span>
+          <button data-zt="in" title="放大">+</button><button data-zt="fit" class="fitb" title="完整显示">适应</button></div>
+      </div></figure>`; }).join("");
+    $("#sImgs").scrollTop = 0;
+    $("#sImgs").querySelectorAll(".viewer").forEach(initViewer);
+    requestAnimationFrame(sizeViewers);
+  }
+  // highlight boxes follow the current amount/date without reloading the image (keeps zoom)
+  it.members.forEach(m => {
+    const layer = $("#sImgs").querySelector(`[data-pic="${m.id}"] .hls`); if(!layer) return;
+    const hl = imgMode==="orig" ? (m._hl || {amount:[], date:[]}) : {amount:[], date:[]};
+    const box = (b, cls) => { const p = 0.006;
+      return `<div class="hl ${cls}" data-hl="${b.join(",")}" style="left:${(b[0]-p)*100}%;top:${(b[1]-p)*100}%;width:${(b[2]+2*p)*100}%;height:${(b[3]+2*p)*100}%"></div>`; };
+    layer.innerHTML = hl.amount.map(b=>box(b,"a")).join("") + hl.date.map(b=>box(b,"d")).join("");
+  });
+
+  const act = document.activeElement, focusKey = act?.dataset?.fk;
+  const typed = focusKey && $("#sForm").contains(act) ? act.value : null;
+  const others = all.filter(o => o!==it && o.kind==="claim");
+  let html = "";
+  if(isGroup){
+    const def = Math.min(...it.members.map(m=>m.amount).filter(a=>a!=null));
+    const paid = V.trip.groups[it.group]?.paid;
+    html += `<div class="paid"><h4 style="color:var(--violet);margin:0">这一单的个人实付</h4>
+      <div class="faint" style="margin-top:4px">关联票据只按一单计算，金额以你个人实际支付为准（例如 AA 后自己付的部分）。</div>
+      <div class="row"><input type="number" class="field" step="0.01" min="0" data-gpaid data-fk="gpaid" value="${paid??""}" placeholder="${isFinite(def)?def.toFixed(2):""}" style="width:160px">
+      <span class="faint">${paid==null?"留空 = 取最小一张 "+(isFinite(def)?money(def):""):"已手动填写"}</span></div></div>`;
+  }
+  it.members.forEach((m,i) => {
+    const alts = (m.ocr?.amount_alts||[]).filter(a=>a!==m.amount).slice(0,4);
+    const w = warnsOf(m);
+    if(m.ocr && m.ocr.amount!=null && m.amount!==m.ocr.amount) w.push(`金额已手动修改（识别为 ${m.ocr.amount}）`);
+    if(m.ocr && m.ocr.date && m.date!==m.ocr.date) w.push(`日期已手动修改（识别为 ${m.ocr.date}）`);
+    html += `<div class="rec" data-id="${m.id}">
+      <div class="head"><b>${it.members.length>1?"票据 "+(i+1)+"　":""}${esc(m.merchant||"未识别商户")}</b>
+        <span>${isGroup?`<button class="lnk" data-split="${m.id}">从本单拆出</button>　`:""}<button class="lnk red" data-remove="${m.id}">移除这张</button></span></div>
+      <div class="grid2">
+        <label>日期<input type="date" class="field" data-k="date" data-fk="date-${m.id}" value="${esc(m.date||"")}"></label>
+        <label>${isGroup?"票面金额":"金额"}<input type="number" class="field" step="0.01" min="0" data-k="amount" data-fk="amount-${m.id}" value="${m.amount??""}"></label>
+      </div>
+      ${alts.length?`<div class="alts">票面上的其他金额：${alts.map(a=>`<button data-alt="${a}">${a.toFixed(2)}</button>`).join("")}</div>`:""}
+      <label class="full">商户<input type="text" class="field" data-k="merchant" data-fk="merchant-${m.id}" value="${esc(m.merchant)}"></label>
+      <label class="full">备注<input type="text" class="field" data-k="note" data-fk="note-${m.id}" value="${esc(m.note)}" placeholder="可选，会写进报销表"></label>
+      <label class="switch"><input type="checkbox" data-k="include" ${m.include?"checked":""}> 计入报销
+        ${!m.include?`<span class="faint">（${esc(m.exclude_reason||"手动排除")}）</span>`:""}</label>
+      ${w.length?`<ul class="warns">${w.map(x=>`<li>⚠ ${esc(x)}</li>`).join("")}</ul>`:""}
+      ${scanBox(m)}
+      <details><summary>查看识别原文</summary><pre>${esc(m.ocr?.text||"")}</pre></details>
+    </div>`;
+  });
+  if(it.kind==="claim" && others.length){
+    html += `<div class="full" style="margin-top:4px">这张票和其他单是同一笔消费？
+      <select class="field sm" data-merge><option value="">并入其他单…</option>${others.map(o=>`<option value="${o.members[0].id}">#${o.no}　${shortDate(o.date)}　${esc(o.members[0].merchant||"")}　${money(o.amount)}</option>`).join("")}</select></div>`;
+  }
+  $("#sForm").innerHTML = html;
+  if(focusKey){
+    const el = $("#sForm").querySelector(`[data-fk="${focusKey}"]`);
+    if(el){ if(typed!=null && el.value!==typed) el.value = typed; el.focus(); }   // don't lose what was typed during a save
+  }
+
+  const outP = it.kind==="claim" && it.date && !it.in_period;
+  $("#sAmt").innerHTML = it.kind==="excluded" ? "本张不计入报销"
+    : `本单计入 <b>${money(it.amount)}</b>　${fmtDate(it.date)}${outP?' <span class="chip c-bad">不在报销日期内</span>':""}`;
+  $("#sPrev").disabled = !neighbour(-1); $("#sNext").disabled = !neighbour(1);
+  const sc = $("#sConfirm");
+  if(it.verified){ sc.textContent = "取消确认"; sc.classList.add("ghost"); }
+  else { sc.textContent = it.kind==="excluded" ? "确认不计入，下一单" : "确认无误，下一单"; sc.classList.remove("ghost"); }
+}
+
+// ---------------- image viewer ----------------
+// Each image sits in a fixed-size viewport; the stage (image + highlight boxes) is moved with a CSS transform.
+// s = scale relative to the image's natural pixels, fit = scale that shows the whole image.
+const VIEWS = new WeakMap();
+const ZOOM_MAX = 8;   // relative to "fit"
+
+function initViewer(v){
+  const img = v.querySelector("img"), st = {s:1, tx:0, ty:0, fit:1, nw:0, nh:0, ptrs:new Map(), moved:false};
+  VIEWS.set(v, st);
+  const ready = () => {
+    st.nw = img.naturalWidth; st.nh = img.naturalHeight;
+    const stage = v.querySelector(".stage");
+    stage.style.width = st.nw + "px"; stage.style.height = st.nh + "px";
+    fitView(v);
+  };
+  if(img.complete && img.naturalWidth) ready(); else img.addEventListener("load", ready, {once:true});
+
+  const local = e => { const r = v.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  v.addEventListener("pointerdown", e => {
+    if(e.target.closest(".ztools") || !st.nw) return;
+    try{ v.setPointerCapture(e.pointerId); }catch(_){}   // keeps the drag going when the pointer leaves the viewer
+    st.ptrs.set(e.pointerId, local(e));
+    st.moved = false;
+    st.start = local(e);
+    if(st.ptrs.size === 2){                      // pinch start
+      const [a, b] = [...st.ptrs.values()];
+      st.pinch = {d: Math.hypot(a[0]-b[0], a[1]-b[1]), s: st.s};
+    }
+  });
+  v.addEventListener("pointermove", e => {
+    if(!st.ptrs.has(e.pointerId)) return;
+    const prev = st.ptrs.get(e.pointerId), cur = local(e);
+    st.ptrs.set(e.pointerId, cur);
+    if(st.ptrs.size === 2 && st.pinch){
+      const [a, b] = [...st.ptrs.values()];
+      const d = Math.hypot(a[0]-b[0], a[1]-b[1]);
+      zoomTo(v, st.pinch.s * d / st.pinch.d, (a[0]+b[0])/2, (a[1]+b[1])/2);
+      st.moved = true;
+      return;
+    }
+    if(Math.hypot(cur[0]-st.start[0], cur[1]-st.start[1]) > 4) st.moved = true;
+    if(st.moved && v.classList.contains("zoomed")){
+      v.classList.add("dragging");
+      st.tx += cur[0] - prev[0]; st.ty += cur[1] - prev[1];
+      applyView(v);
+    }
+  });
+  const end = e => {
+    if(!st.ptrs.has(e.pointerId)) return;
+    st.ptrs.delete(e.pointerId);
+    if(st.ptrs.size < 2) st.pinch = null;
+    v.classList.remove("dragging");
+    if(e.type === "pointerup" && !st.moved && st.ptrs.size === 0){
+      const hl = e.target.closest(".hl");
+      const [x, y] = local(e);
+      if(hl) zoomToBox(v, hl.dataset.hl.split(",").map(Number));
+      else if(v.classList.contains("zoomed")) fitView(v);
+      else zoomTo(v, st.fit * 2.5, x, y);
+    }
+  };
+  v.addEventListener("pointerup", end);
+  v.addEventListener("pointercancel", end);
+  v.addEventListener("wheel", e => {
+    if(!st.nw) return;
+    if(e.ctrlKey || e.metaKey){                  // trackpad pinch arrives as ctrl+wheel
+      e.preventDefault();
+      const [x, y] = local(e);
+      zoomTo(v, st.s * Math.exp(-e.deltaY * 0.01), x, y);
+    } else if(v.classList.contains("zoomed")){   // two-finger scroll / wheel pans a zoomed image
+      e.preventDefault();
+      st.tx -= e.deltaX; st.ty -= e.deltaY;
+      applyView(v);
+    }
+  }, {passive:false});
+  v.querySelector(".ztools").addEventListener("click", e => {
+    const b = e.target.closest("[data-zt]"); if(!b) return;
+    const W = v.clientWidth, H = v.clientHeight;
+    if(b.dataset.zt === "fit") fitView(v);
+    else zoomTo(v, st.s * (b.dataset.zt === "in" ? 1.5 : 1/1.5), W/2, H/2);
+  });
+}
+function applyView(v){
+  const st = VIEWS.get(v); if(!st || !st.nw) return;
+  const W = v.clientWidth, H = v.clientHeight, w = st.nw * st.s, h = st.nh * st.s;
+  // keep the image on screen: centred when smaller than the viewport, edges never pulled inside when larger
+  st.tx = w <= W ? (W - w) / 2 : Math.min(0, Math.max(W - w, st.tx));
+  st.ty = h <= H ? (H - h) / 2 : Math.min(0, Math.max(H - h, st.ty));
+  const stage = v.querySelector(".stage");
+  stage.style.transform = `translate(${st.tx}px,${st.ty}px) scale(${st.s})`;
+  stage.style.setProperty("--s", st.s);
+  v.classList.toggle("zoomed", st.s > st.fit * 1.01);
+  v.querySelector(".zl").textContent = Math.round(st.s / st.fit * 100) + "%";
+}
+function fitView(v){
+  const st = VIEWS.get(v); if(!st || !st.nw) return;
+  st.fit = Math.min(v.clientWidth / st.nw, v.clientHeight / st.nh);
+  st.s = st.fit;
+  applyView(v);
+}
+function zoomTo(v, s, cx, cy){
+  // zoom so that the point (cx, cy) in the viewport stays where it is
+  const st = VIEWS.get(v); if(!st || !st.nw) return;
+  s = Math.max(st.fit, Math.min(st.fit * ZOOM_MAX, s));
+  st.tx = cx - (cx - st.tx) * s / st.s;
+  st.ty = cy - (cy - st.ty) * s / st.s;
+  st.s = s;
+  applyView(v);
+}
+function zoomToBox(v, b){
+  // b = normalized [x, y, w, h]: zoom until the box is comfortably large, centred
+  const st = VIEWS.get(v); if(!st || !st.nw) return;
+  const W = v.clientWidth, H = v.clientHeight;
+  let s = Math.min(W * 0.55 / (b[2] * st.nw), H * 0.3 / (b[3] * st.nh));
+  s = Math.max(st.fit * 1.5, Math.min(st.fit * ZOOM_MAX, s));
+  st.s = s;
+  st.tx = W / 2 - (b[0] + b[2] / 2) * st.nw * s;
+  st.ty = H / 2 - (b[1] + b[3] / 2) * st.nh * s;
+  applyView(v);
+}
+function sizeViewers(){
+  // narrow layout: the panel scrolls as a whole, so size the image to the space above the bottom bar
+  const narrow = matchMedia("(max-width:820px)").matches;
+  const foot = $("#sheet .foot").getBoundingClientRect().top;
+  document.querySelectorAll("#sImgs .viewer").forEach(v => {
+    if(narrow){
+      const h = Math.max(240, Math.min(window.innerHeight * 0.7, foot - v.getBoundingClientRect().top - 12));
+      v.style.height = h + "px";
+    } else v.style.height = "";
+    const st = VIEWS.get(v); if(!st) return;
+    if(v.classList.contains("zoomed")) applyView(v); else fitView(v);
+  });
+}
+window.addEventListener("resize", sizeViewers);
+$("#sImgs").addEventListener("click", e => {
+  if(e.target.dataset.im){ imgMode = e.target.dataset.im; renderSheet(); }
+});
+$("#sForm").addEventListener("change", async e => {
+  const t = e.target;
+  if(t.dataset.gpaid!=null){
+    V.trip.groups[curItem().group] = {paid: t.value==="" ? null : Math.round(Number(t.value)*100)/100};
+    return save().then(()=>renderSheet());
+  }
+  if(t.dataset.merge!=null){
+    if(!t.value) return;
+    const target = items().find(o=>o.members.some(m=>m.id===t.value));
+    if(linkIds([...curItem().members.map(m=>m.id), ...target.members.map(m=>m.id)]) === false){ t.value=""; return; }
+    await save(); renderSheet(true); return toast("已合并为一单，请核对个人实付");
+  }
+  const box = t.closest(".rec"); if(!box) return;
+  const r = V.trip.receipts.find(x=>x.id===box.dataset.id), k = t.dataset.k;
+  if(k==="amount") r.amount = t.value==="" ? null : Math.round(Number(t.value)*100)/100;
+  else if(k==="include"){ r.include = t.checked; r.exclude_reason = r.include ? "" : (r.exclude_reason || "手动排除"); }
+  else if(k==="date") r.date = t.value || null;
+  else if(k) r[k] = t.value;
+  await save(); renderSheet();
+});
+$("#sForm").addEventListener("click", async e => {
+  const t = e.target;
+  if(t.dataset.alt){
+    const r = V.trip.receipts.find(x=>x.id===t.closest(".rec").dataset.id);
+    r.amount = Number(t.dataset.alt); await save(); renderSheet();
+  }
+  if(t.dataset.split){ unlinkIds([t.dataset.split]); await save(); renderSheet(true); }
+  if(t.dataset.remove){
+    const r = V.trip.receipts.find(x=>x.id===t.dataset.remove);
+    if(!confirm(`从本次出差移除「${r.orig_name}」？\n（只删除程序里的备份，你自己的原图不受影响）`)) return;
+    await flushEdits();
+    const all = items(), i = all.findIndex(hasId(r.id));
+    const stay = all[i].members.find(m=>m.id!==r.id) || all[i+1] || all[i-1];
+    selected.delete(r.id);
+    render(await api("DELETE", tripUrl("/receipt/"+r.id)));
+    if(stay){ cur = stay.members ? stay.members[0].id : stay.id; renderSheet(true); } else closeSheet();
+  }
+  if(t.dataset.scanack){
+    render(await api("POST", tripUrl("/scan-ack"), {ids:[t.dataset.scanack], on: t.dataset.on==="1"}));
+    renderSheet();
+  }
+});
+function inPdf(m){ return V.claims.some(c=>c.in_period && c.ids.includes(m.id)); }
+function scanBox(m){
+  const st = m._scan;
+  if(V.scan_enabled && m.include && !inPdf(m)) return `<div class="scanbox" style="margin-top:12px;background:#f0f0f2;color:var(--mute)">期外单据，不放进扫描版 PDF</div>`;
+  if(!V.scan_enabled || !m.include || !st) return V.scan_enabled && m.include ? `<div class="scanbox bad" style="margin-top:12px">还没有扫描版，请在第 4 步生成</div>` : "";
+  const c = st.check || {};
+  const facts = st.mode ? `金额 ${c.amount_ok?"✓":"✗"}　日期 ${c.date_ok===null?"票面无日期":c.date_ok?"✓":"✗"}　内容完整 ${c.content_ok?"✓":"✗"}` : "";
+  if(st.ok) return `<div class="scanbox ok" style="margin-top:12px">扫描版复核通过：${facts}${st.problems.length?`<ul>${st.problems.map(p=>`<li>${esc(p)}</li>`).join("")}</ul>`:""}</div>`;
+  return `<div class="scanbox bad" style="margin-top:12px"><b>扫描版需要你比对</b>　${facts}
+    <ul>${st.problems.map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
+    <div style="margin-top:10px">${st.mode ? (st.acked
+      ? `已人工比对确认 <button class="lnk" data-scanack="${m.id}" data-on="0">撤销</button>`
+      : `<button class="pill gray" data-scanack="${m.id}" data-on="1" style="padding:6px 16px;font-size:14px">切到「扫描版」看过了，内容无误</button>`) : ""}</div></div>`;
+}
+function neighbour(step){
+  // the next item in the given direction that passes the list filter
+  const all = items();
+  for(let i = all.findIndex(hasId(cur)) + step; i >= 0 && i < all.length; i += step)
+    if(passFilter(all[i])) return all[i];
+  return null;
+}
+function go(step){
+  const n = neighbour(step);
+  if(n){ cur = n.members[0].id; renderSheet(true); }
+}
+$("#sPrev").onclick = () => go(-1);
+$("#sNext").onclick = () => go(1);
+// wantOn is decided when the user acts (button label / Enter), not after saving: saving an edit can flip the
+// item's state (e.g. an amount changed and changed back is confirmed again), which must not turn a
+// "confirm" into an "un-confirm".
+async function confirmCurrent(wantOn){
+  if(!curItem()) return;
+  await flushEdits();
+  const fresh = curItem();
+  if(!fresh) return;
+  const ids = fresh.members.map(m=>m.id);
+  if(!wantOn){
+    if(fresh.verified){
+      try{ render(await api("POST", tripUrl("/confirm"), {ids, on:false})); }catch(e){ return toast(e.message, 5000); }
+    }
+    return renderSheet();
+  }
+  if(!fresh.verified){
+    const miss = fresh.kind==="claim" && fresh.members.some(m=>m.include && (m.amount==null || !m.date));
+    if(miss) return toast("还缺金额或日期，补全后再确认");
+    try{ render(await api("POST", tripUrl("/confirm"), {ids, on:true})); }
+    catch(e){ return toast(e.message, 5000); }
+  }
+  // jump to the next item still waiting for review
+  const all = items(), i = all.findIndex(hasId(ids[0]));
+  const next = [...all.slice(i+1), ...all.slice(0, Math.max(i,0))].find(x=>!x.verified);
+  if(next){ cur = next.members[0].id; renderSheet(true); }
+  else { closeSheet(); toast("全部核对完成，可以生成报销包了"); $("#export").scrollIntoView({behavior:"smooth", block:"center"}); }
+}
+$("#sConfirm").onclick = () => confirmCurrent(!curItem()?.verified);
+$("#startReview").onclick = () => {
+  const all = items(); const first = all.find(x=>!x.verified) || all[0];
+  if(first) openSheet(first.members[0].id);
+};
+document.addEventListener("keydown", e => {
+  if(!$("#sheet").classList.contains("on")) return;
+  const typing = ["INPUT","SELECT","TEXTAREA"].includes(document.activeElement?.tagName);
+  if(e.key==="Escape"){ flushEdits().then(closeSheet); }
+  else if(e.key==="Enter" && (e.metaKey || e.ctrlKey)){ e.preventDefault(); confirmCurrent(true); }
+  else if(!typing && (e.key==="+" || e.key==="=" || e.key==="-" || e.key==="0")){
+    document.querySelectorAll("#sImgs .viewer").forEach(v => {
+      if(e.key==="0") return fitView(v);
+      const st = VIEWS.get(v); if(st) zoomTo(v, st.s * (e.key==="-" ? 1/1.5 : 1.5), v.clientWidth/2, v.clientHeight/2);
+    });
+  }
+  else if(!typing && e.key==="ArrowLeft") go(-1);
+  else if(!typing && e.key==="ArrowRight") go(1);
+  else if(!typing && e.key==="Enter"){ e.preventDefault(); confirmCurrent(true); }
+});
+
+// ---------------- 4. scan ----------------
+async function runScan(all){
+  $("#scanBusy").classList.add("on"); $("#scanBtn").disabled = true;
+  try{
+    const v = await api("POST", tripUrl("/scan" + (all?"?all=1":"")));
+    render(v);
+    toast(v.scanned ? `已扫描 ${v.scanned} 张：${v.scan_ok} 张复核一致` + (v.scan_bad?`，${v.scan_bad} 张需要你比对`:"") : "扫描版已是最新");
+  }catch(e){ toast("扫描失败：" + e.message, 6000); }
+  finally{ $("#scanBusy").classList.remove("on"); $("#scanBtn").disabled = false; }
+}
+$("#scanBtn").onclick = () => runScan(false);
+$("#rescanBtn").onclick = () => runScan(true);
+$("#scanOff").onclick = async () => {
+  if(!confirm("关闭后，生成的报销包不含扫描版和 PDF。已做好的扫描结果会保留，随时可以再打开。")) return;
+  render(await api("POST", tripUrl("/scan-enabled"), {on:false}));
+};
+function renderScan(){
+  const inc = V.trip.receipts.filter(r=>r.include && inPdf(r));
+  const done = inc.filter(r=>r._scan && r._scan.mode), ok = done.filter(r=>r._scan.ok), acked = done.filter(r=>!r._scan.ok && r._scan.acked);
+  const need = done.filter(scanNeeds), missing = inc.length - done.length;
+  $("#rescanBtn").style.display = V.scan_enabled ? "" : "none";
+  $("#scanOff").style.display = V.scan_enabled ? "" : "none";
+  $("#scanBtn").textContent = !V.scan_enabled ? "一键生成扫描版" : (missing ? `扫描剩下的 ${missing} 张` : "扫描版已是最新");
+  $("#scanStats").innerHTML = V.scan_enabled ? `
+    <div><b style="color:var(--green)">${ok.length}</b>复核一致</div>
+    <div><b>${acked.length}</b>已人工比对</div>
+    <div><b style="color:${need.length?"var(--orange)":"inherit"}">${need.length}</b>待比对 ${need.length?`<button class="lnk" id="openNeed">去比对</button>`:""}</div>
+    <div><b>${missing}</b>未扫描</div>` : "";
+  const on = $("#openNeed"); if(on) on.onclick = () => { imgMode = "scan"; openSheet(need[0].id); };
+}
+
+// ---------------- 5. export ----------------
+$("#export").onclick = async () => {
+  try{
+    const res = await api("POST", tripUrl("/export"));
+    const x = res.summary;
+    render(await api("GET", tripUrl()));
+    $("#result").innerHTML = `<b>已生成。</b> 共 ${x.claims} 单、${res.files.length} 张图片，总天数 ${x.days}，上限 ${money(x.cap)}，期内实付 ${money(x.spent)}，<b>应报销 ${money(x.reimburse)}</b>${x.out_of_period?`；期外 ${money(x.out_of_period)} 不计入（在「未计入」文件夹）`:""}。<br>
+      <span class="faint">${esc(res.excel)}${res.pdf?"<br>"+esc(res.pdf):""}</span>`;
+    $("#result").style.display = "block";
+  }catch(e){ toast("还不能生成：" + e.message, 7000); }
+};
+$("#openFolder").onclick = () => api("POST", tripUrl("/open"));
+
+// ---------------- render ----------------
+function render(v){
+  V = v;
+  $("#welcome").style.display = "none"; $("#tripUI").style.display = "";
+  const ps = V.trip.periods.filter(p=>p.start&&p.end);
+  $("#hTitle").textContent = V.trip.name;
+  $("#hSub").textContent = ps.length ? ps.map(p=>`${shortDate(p.start)}–${shortDate(p.end)}`).join("、") + `，共 ${V.summary.days} 天 × ${money(V.trip.rate)}` : "先填写报销日期";
+  if(!$("#periods").contains(document.activeElement)) renderPeriods();
+  else $("#problems").innerHTML = V.problems.map(p=>`<li>${esc(p)}</li>`).join("");
+  renderList();
+  const s = V.summary;
+  $("#kReimb").textContent = money(s.reimburse); $("#kCap").textContent = money(s.cap);
+  $("#kSpent").textContent = money(s.spent); $("#kOver").textContent = money(s.over);
+  $("#overStat").style.display = s.over > 0 ? "" : "none";
+  // export gate
+  const all = items(), todo = all.filter(i=>!i.verified).length;
+  const gate = [];
+  if(!V.trip.periods.length) gate.push("还没有填写报销日期");
+  if(V.problems.length) gate.push("报销日期有问题，见第 1 步");
+  if(!all.length) gate.push("还没有导入票据");
+  if(todo) gate.push(`还有 ${todo} 项未核对确认`);
+  gate.push(...(V.scan_gate||[]));
+  renderScan();
+  $("#stale").style.display = V.export_stale ? "block" : "none";
+  $("#export").disabled = gate.length > 0;
+  $("#gate").textContent = gate.join("；");
+}
+
+loadTrips();
+</script>
+</body>
+</html>

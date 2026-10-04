@@ -1,0 +1,14 @@
+# Personal data: receipt photos and generated reimbursement packages
+DATA/
+output/
+
+# Local environment and build products (rebuilt by 启动报销助手.command)
+app/.venv/
+app/ocr/ocr
+app/ocr/scan
+__pycache__/
+*.pyc
+
+# Local tooling / OS files
+.claude/
+.DS_Store
