@@ -20,8 +20,13 @@ def new_trip(name):
     return {"name": name, "rate": 50, "currency": "GBP", "periods": [], "receipts": [], "groups": {}}
 
 
+WINDOWS_RESERVED = re.compile(r"^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$", re.I)   # not usable as a folder name there
+
+
 def safe_name(s):
     s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", s).strip().strip(".")
+    if WINDOWS_RESERVED.match(s):
+        s = "_" + s
     return s or "未命名出差"
 
 

@@ -12,3 +12,14 @@ __pycache__/
 # Local tooling / OS files
 .claude/
 .DS_Store
+
+# Recognition models downloaded on first run (kept outside the venv)
+app/models/
+
+# Packaging (PyInstaller): build environment, intermediate files, the finished package
+packaging/.buildvenv/
+packaging/build/
+packaging/dist/
+packaging/THIRD_PARTY_NOTICES.txt
+packaging/*.zip
+packaging/*.sha256

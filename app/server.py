@@ -1,10 +1,10 @@
-"""Local web app for receipt reimbursement. Run: .venv/bin/python server.py  ->  http://127.0.0.1:8765"""
+"""Local web app for receipt reimbursement. Run: .venv/bin/python server.py  (Windows: .venv\\Scripts\\python server.py)
+->  http://127.0.0.1:8765"""
 import hashlib
 import json
 import mimetypes
 import os
 import shutil
-import subprocess
 import sys
 import threading
 import time
@@ -15,16 +15,17 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-APP = Path(__file__).resolve().parent
+FROZEN = getattr(sys, "frozen", False)           # the packaged .exe (PyInstaller)
+APP = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))      # code, static files, models
+ROOT = Path(sys.executable).parent if FROZEN else APP.parent               # next to the .exe / the repository
 sys.path.insert(0, str(APP))
+import native  # noqa: E402  (everything OS specific: OCR, scan, preview, open folder)
 from core import trip as T  # noqa: E402
 from core.excel import write_workbook  # noqa: E402
 from core.extract import extract, locate  # noqa: E402
 from core import scan as S  # noqa: E402
 
-OUTPUT = Path(os.environ.get("BX_OUTPUT", APP.parent / "output"))
-OCR_BIN = APP / "ocr" / "ocr"
-SCAN_BIN = APP / "ocr" / "scan"
+OUTPUT = Path(os.environ.get("BX_OUTPUT", ROOT / "output"))
 STATIC = APP / "static"
 LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()   # one scan at a time; scanning itself runs outside LOCK
@@ -74,17 +75,7 @@ def list_trips():
 # ---------------- OCR / images ----------------
 
 def run_ocr(paths):
-    if not paths:
-        return {}
-    res = subprocess.run([str(OCR_BIN), *map(str, paths)], capture_output=True, text=True, timeout=600)
-    out = {}
-    for line in res.stdout.splitlines():
-        try:
-            obj = json.loads(line)
-            out[obj["file"]] = obj
-        except ValueError:
-            pass
-    return out
+    return native.ocr(paths) if paths else {}
 
 
 def preview(trip_name, rec, size):
@@ -95,8 +86,10 @@ def preview(trip_name, rec, size):
     if not cache.exists():
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_name(f"{cache.stem}.{uuid.uuid4().hex[:6]}.tmp.jpg")   # never serve a half-written file
-        subprocess.run(["sips", "-s", "format", "jpeg", "-Z", str(size), str(src), "--out", str(tmp)],
-                       capture_output=True, timeout=60)
+        try:
+            native.make_preview(src, tmp, size)
+        except (OSError, ValueError):
+            pass                          # unreadable image: no preview (the caller answers 404)
         if tmp.exists():
             tmp.replace(cache)
     return cache
@@ -144,10 +137,11 @@ def add_files(trip, files):
     ocr = run_ocr([d / r["stored"] for r in new])
     for r in new:
         raw = ocr.get(str(d / r["stored"]), {"lines": []})
-        ex = extract(raw)
+        ex = extract(raw, periods=trip.get("periods"))     # the trip's dates make a misread date easier to spot
         r["ocr"] = {k: ex[k] for k in ("amount", "date", "time", "merchant", "warnings",
-                                       "amount_alts", "date_source", "text")}
+                                       "amount_alts", "date_source", "text", "agree", "alt") if k in ex}
         r["ocr"]["lines"] = compact_lines(raw)
+        r["ocr"]["facts"] = S.facts_all(raw)                # what the photo shows, for checking its scan later
         r.update(amount=ex["amount"], date=ex["date"], time=ex["time"], merchant=ex["merchant"])
     trip["receipts"].extend(new)
     T.mark_duplicates(trip["receipts"], [r["id"] for r in new])
@@ -165,41 +159,75 @@ HOW_LABEL = {"perspective": "裁边矫正", "box": "按文字区域裁切", "ful
 
 
 def scan_receipts(trip_name, recs):
-    """Make the scan variants for each receipt, OCR them -> {receipt id: scan info}.
+    """Make the scan variants for each receipt, read them back -> {receipt id: scan info}.
 
     Pure work on files (no trip state changes), so it runs without holding LOCK.
-    recs: [{"id", "stored", "sha1"}]
+    recs: [{"id", "stored", "sha1", "amount", "date", "facts"}]  (amount / date: what is confirmed so far;
+    facts: what the original photo showed, kept from the import so it is not read a second time)
+
+    Reading is the expensive part, so it is done in as few steps as will do:
+      1. the full-frame "enhance" variant (the reference every other variant is checked against) and the cropped
+         one, each read by the first reader only;
+      2. a variant that does not read back the confirmed amount / date is read by the second reader as well;
+      3. only when the cropped variant still fails, the "box" fallback is made and read the same way.
     """
     from concurrent.futures import ThreadPoolExecutor
     d = trip_dir(trip_name)
     (d / CACHE_DIR / "scan").mkdir(parents=True, exist_ok=True)
-    jobs = [(r, mode) for r in recs for mode in SCAN_MODES]
+    src = lambda r: d / ORIG_DIR / r["stored"]  # noqa: E731
+    out = lambda r, mode: scan_path(trip_name, r["id"], mode)  # noqa: E731
+    metas, facts = {}, {}                        # (receipt id, mode) -> scan meta / facts read from the scan
 
-    def run(job):
-        r, mode = job
-        out = scan_path(trip_name, r["id"], mode)
-        try:
-            res = subprocess.run([str(SCAN_BIN), str(d / ORIG_DIR / r["stored"]), str(out), mode],
-                                 capture_output=True, text=True, timeout=180)
-            return job, json.loads(res.stdout or "{}")
-        except (ValueError, subprocess.TimeoutExpired):
-            return job, {"ok": False}
+    orig = {r["id"]: r.get("facts") for r in recs}
+    unread = [r for r in recs if not orig[r["id"]]]
+    if unread:
+        ocr = native.ocr([src(r) for r in unread])
+        for r in unread:
+            orig[r["id"]] = S.facts_all(ocr.get(str(src(r)), {}))
 
-    with ThreadPoolExecutor(max_workers=max(2, min(6, (os.cpu_count() or 4) // 2))) as pool:
-        meta = {(r["id"], mode): m for (r, mode), m in pool.map(run, jobs)}
-    outs = [scan_path(trip_name, r["id"], mode) for r, mode in jobs]
-    ocr = run_ocr([d / ORIG_DIR / r["stored"] for r in recs] + [o for o in outs if o.exists()])
+    def make_and_read(jobs):
+        def make(job):
+            r, mode = job
+            return (r["id"], mode), native.scan_image(src(r), out(r, mode), mode)
+        with ThreadPoolExecutor(max_workers=max(2, min(6, (os.cpu_count() or 4) // 2))) as pool:
+            for key, m in pool.map(make, jobs):
+                metas[key] = m
+        made = [(r, mode) for r, mode in jobs if metas[(r["id"], mode)].get("ok") and out(r, mode).exists()]
+        facts.update(read(made, native.lead_readers()))
+
+    def read(jobs, readers):
+        res = native.ocr([out(r, mode) for r, mode in jobs], readers) if jobs else {}
+        return {(r["id"], mode): S.facts(res.get(str(out(r, mode)), {})) for r, mode in jobs}
+
+    def verdict(r, mode):
+        f = facts.get((r["id"], mode))
+        if f is None or r.get("amount") is None:
+            return None                          # nothing to judge with
+        return S.check({"amount": r["amount"], "date": r.get("date")}, orig[r["id"]], f,
+                       full=facts.get((r["id"], "enhance")), cropped=metas[(r["id"], mode)].get("cropped", mode != "enhance"))
+
+    def second_opinion(mode):
+        if not native.second_readers():
+            return
+        todo = [(r, mode) for r in recs if (v := verdict(r, mode)) is not None and not v["ok"]]
+        for key, f in read(todo, native.second_readers()).items():
+            facts[key] = S.merge_facts(facts[key], f)
+
+    make_and_read([(r, mode) for r in recs for mode in ("enhance", "crop")])
+    second_opinion("enhance")                   # first: the crop is checked against it
+    second_opinion("crop")
+    box = [(r, "box") for r in recs if (v := verdict(r, "crop")) is None or not v["ok"]]
+    if box:
+        make_and_read(box)
+        second_opinion("box")
     infos = {}
     for r in recs:
-        info = {"orig": S.facts(ocr.get(str(d / ORIG_DIR / r["stored"]), {})), "sha1": r["sha1"],
-                "at": datetime.now().isoformat(timespec="seconds")}
+        info = {"orig": orig[r["id"]], "sha1": r["sha1"], "at": datetime.now().isoformat(timespec="seconds")}
         for mode in SCAN_MODES:
-            out = scan_path(trip_name, r["id"], mode)
-            m = meta.get((r["id"], mode), {})
-            if m.get("ok") and out.exists():
-                info[mode] = {**S.facts(ocr.get(str(out), {})), "w": m["w"], "h": m["h"],
-                              "cropped": m.get("cropped", False), "how": m.get("how", "full"),
-                              "upscale": m.get("upscale", 1)}
+            key, m = (r["id"], mode), metas.get((r["id"], mode), {})
+            if m.get("ok") and key in facts:
+                info[mode] = {**facts[key], "w": m["w"], "h": m["h"], "cropped": m.get("cropped", False),
+                              "how": m.get("how", "full"), "upscale": m.get("upscale", 1)}
         infos[r["id"]] = info
     return infos
 
@@ -477,8 +505,9 @@ class H(BaseHTTPRequestHandler):
         try:
             with LOCK:
                 t = load_trip(name)
-                todo = [{"id": r["id"], "stored": r["stored"], "sha1": r["sha1"]} for r in pdf_receipts(t)
-                        if q.get("all") or needs_scan(r)]
+                todo = [{"id": r["id"], "stored": r["stored"], "sha1": r["sha1"], "amount": r.get("amount"),
+                         "date": r.get("date"), "facts": r.get("ocr", {}).get("facts")}
+                        for r in pdf_receipts(t) if q.get("all") or needs_scan(r)]
             infos = scan_receipts(t["name"], todo)
             with LOCK:
                 t = load_trip(name)
@@ -548,7 +577,8 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {**view(t), "added": len(new), "skipped": skipped})
 
         if method == "POST" and action == "import-folder":
-            folder = Path(json.loads(self.body()).get("path", "")).expanduser()
+            # Explorer's "Copy as path" wraps the path in quotes
+            folder = Path(json.loads(self.body()).get("path", "").strip().strip('"')).expanduser()
             if not folder.is_dir():
                 raise ValueError(f"文件夹不存在：{folder}")
             files = [(p.name, p) for p in sorted(folder.iterdir())
@@ -598,19 +628,33 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, view(t))
 
         if method == "POST" and action == "export":
-            res = export(t)
+            try:
+                res = export(t)
+            except PermissionError as e:     # Windows refuses to replace a file that is open in another program
+                res = {"ok": False, "problems": [
+                    f"文件正被其他程序占用：{e.filename or e}。请先关闭已打开的 Excel / PDF / 图片，"
+                    "以及资源管理器里正在查看该出差文件夹的窗口，再重新生成"]}
             return self.send(200 if res["ok"] else 400, res)
 
         if method == "POST" and action == "open":
-            subprocess.run(["open", str(trip_dir(t["name"]))])
+            native.open_folder(trip_dir(t["name"]))
             return self.send(200, {"ok": True})
 
         self.send(404, {"error": "not found"})
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):      # a legacy console (e.g. GBK) must not crash on an odd path
+        if stream and hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     port = int(os.environ.get("BX_PORT", 8765))
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    from version import __version__
+    print(f"报销助手 v{__version__}", flush=True)
+    print("正在准备文字识别……", flush=True)
+    info = native.warmup()                       # first run: picks the fastest backend; later: a second or two
+    if info:
+        print(f"识别引擎：{info}", flush=True)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     url = f"http://127.0.0.1:{port}"
     print(f"报销助手已启动：{url}   （输出目录：{OUTPUT}）  Ctrl+C 退出")

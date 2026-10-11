@@ -1,17 +1,18 @@
-"""Run: .venv/bin/python -m unittest discover -s tests -v"""
+"""Run: .venv/bin/python -m unittest discover -s tests -v   (Windows: .venv\\Scripts\\python -m unittest discover -s tests -v)"""
 import json
-import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 APP = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP))
+import native  # noqa: E402
 from core import scan as S  # noqa: E402
 from core import trip as T  # noqa: E402
 from core.excel import write_workbook  # noqa: E402
-from core.extract import extract  # noqa: E402
+from core.extract import build_rows, extract  # noqa: E402
 
 # Optional local sample set (not in the repository: real receipts are personal data).
 # Put photos in DATA/ plus DATA/truth.json: {"<first 8 chars of file name>": {"amount": 12.5,
@@ -41,8 +42,7 @@ def rec(i, amount, day, **kw):
 class TestExtractOnRealData(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        out = subprocess.run([str(APP / "ocr" / "ocr"), *map(str, sample_files())], capture_output=True, text=True).stdout
-        cls.res = {Path(o["file"]).name[:8]: extract(o) for o in map(json.loads, out.splitlines())}
+        cls.res = {Path(o["file"]).name[:8]: extract(o) for o in native.ocr(sample_files()).values()}
 
     def test_every_file_covered(self):
         self.assertEqual(set(self.res), set(TRUTH))
@@ -272,8 +272,7 @@ class TestScanCheck(unittest.TestCase):
 class TestLocate(unittest.TestCase):
     def test_amount_and_date_found_on_every_real_receipt(self):
         from core.extract import locate
-        out = subprocess.run([str(APP / "ocr" / "ocr"), *map(str, sample_files())], capture_output=True, text=True).stdout
-        for o in map(json.loads, out.splitlines()):
+        for o in native.ocr(sample_files()).values():
             k = Path(o["file"]).name[:8]
             amt, day = TRUTH[k]
             with self.subTest(k):
@@ -342,14 +341,20 @@ class TestLayout(unittest.TestCase):
                     self.assertGreaterEqual(line_mm, S.MIN_LINE_MM - 0.05)
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+def mono_font(size):
+    from PIL import ImageFont
+    for f in ("/System/Library/Fonts/Menlo.ttc", "C:/Windows/Fonts/consola.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"):
+        if Path(f).exists():
+            return ImageFont.truetype(f, size)
+    raise unittest.SkipTest("no monospaced system font to draw test receipts with")
 
 
 def make_receipt(path, lines):
     """A plain synthetic till receipt photo: white paper on a grey table, monospaced text."""
-    from PIL import Image, ImageDraw, ImageFont
-    font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 46)
+    from PIL import Image, ImageDraw
+    font = mono_font(46)
     img = Image.new("RGB", (1500, 2000), (120, 118, 112))
     d = ImageDraw.Draw(img)
     d.rectangle((330, 160, 1170, 1840), fill=(250, 250, 247))
@@ -407,7 +412,7 @@ class TestServerEndToEnd(unittest.TestCase):
         req = urllib.request.Request(self.base, method="POST", data=json.dumps({"name": "测试"}).encode())
         urllib.request.urlopen(req).read()
         code, v = self.call("POST", "/import-folder", {"path": str(self.src)})
-        self.assertEqual((code, v["added"]), (200, 2))
+        self.assertEqual((code, v.get("added", v)), (200, 2))
         ids = [r["id"] for r in v["trip"]["receipts"]]
         got = sorted((r["date"], r["amount"]) for r in v["trip"]["receipts"])
         self.assertEqual(got, [("2026-09-05", 19.5), ("2026-09-06", 14.0)])
@@ -457,6 +462,7 @@ class TestServerEndToEnd(unittest.TestCase):
         self.assertIn("应报销金额", cover)
         self.assertIn("£33.50", cover)
         self.assertGreaterEqual(len(pdf), 2)
+        pdf.close()      # Windows cannot replace a file that is still open (the next export rewrites the PDF)
 
         # out-of-period claims leave the PDF and go to 未计入
         self.call("PUT", "", {"periods": [{"start": "2026-09-10", "end": "2026-09-11"}]})
@@ -464,3 +470,323 @@ class TestServerEndToEnd(unittest.TestCase):
         self.assertEqual(code, 200, res)
         self.assertEqual(res["summary"]["spent"], 0)
         self.assertTrue(all(f.startswith("未计入/") for f in res["files"]))
+
+
+class TestPlatformIndependentHelpers(unittest.TestCase):
+    def test_folder_names_valid_on_windows(self):
+        self.assertEqual(T.safe_name('a:b*c?"d'), "a_b_c__d")
+        self.assertEqual(T.safe_name("CON"), "_CON")
+        self.assertEqual(T.safe_name("nul.txt"), "_nul.txt")
+        self.assertEqual(T.safe_name("com1"), "_com1")
+        self.assertEqual(T.safe_name("console"), "console")
+        self.assertEqual(T.safe_name("  ... "), "未命名出差")
+
+    def test_rows_use_tilt_free_box_when_given(self):
+        # photo tilted: "TOTAL" at the left and its amount at the right are 0.06 apart in y, one line pitch is 0.03
+        lines = [{"text": "TOTAL", "box": [0.1, 0.30, 0.2, 0.02], "rbox": [0.1, 0.33, 0.2, 0.02]},
+                 {"text": "14.30", "box": [0.7, 0.36, 0.1, 0.02], "rbox": [0.7, 0.33, 0.1, 0.02]},
+                 {"text": "VAT", "box": [0.1, 0.33, 0.2, 0.02], "rbox": [0.1, 0.36, 0.2, 0.02]},
+                 {"text": "2.38", "box": [0.7, 0.39, 0.1, 0.02], "rbox": [0.7, 0.36, 0.1, 0.02]}]
+        self.assertEqual(build_rows(lines), ["TOTAL 14.30", "VAT 2.38"])
+        # without rbox (macOS Vision) nothing changes: boxes are used as they are
+        self.assertEqual(build_rows([{k: v for k, v in ln.items() if k != "rbox"} for ln in lines]),
+                         ["TOTAL", "VAT", "14.30", "2.38"])
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows backend")
+class TestWindowsBackend(unittest.TestCase):
+    """Synthetic phone photos through the pure-Python OCR / scan / preview of native/windows.py."""
+    LINES = ["  TEST NOODLE BAR", "  1 HIGH STREET", "", "Date: 05/09/2026   12:30", "1 x Ramen       £11.50",
+             "1 x Gyoza        £6.20", "-" * 26, "SUBTOTAL        £17.70", "VAT              £2.95",
+             "TOTAL           £17.70", "CARD PAYMENT    £17.70", "", "   THANK YOU"]
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def photo(self, name, degrees=0, exif=None, size=(1500, 2000)):
+        from PIL import Image
+        flat = self.dir / "flat.jpg"
+        make_receipt(flat, self.LINES)
+        im = Image.open(flat)
+        if degrees:
+            im = im.rotate(degrees, resample=Image.BICUBIC, fillcolor=(120, 118, 112))
+        path = self.dir / name
+        im.save(path, quality=92, **({"exif": exif} if exif is not None else {}))
+        return path
+
+    def test_tilted_photo_reads_the_total_not_the_vat(self):
+        path = self.photo("tilt.jpg", degrees=7)
+        got = extract(native.ocr([path])[str(path)])
+        self.assertEqual((got["amount"], got["date"]), (17.70, "2026-09-05"))
+
+    def test_exif_orientation_and_taken_date(self):
+        from PIL import Image
+        exif = Image.Exif()
+        exif[0x0112] = 6                                   # stored sideways, viewers turn it 90 degrees clockwise
+        exif.get_ifd(0x8769)[0x9003] = "2026:09:05 12:31:00"
+        flat = self.dir / "up.jpg"
+        make_receipt(flat, self.LINES)
+        path = self.dir / "side.jpg"
+        Image.open(flat).rotate(90, expand=True).save(path, quality=92, exif=exif)
+        res = native.ocr([path])[str(path)]
+        self.assertEqual(res["exif_date"], "2026:09:05 12:31:00")
+        self.assertEqual(extract(res)["amount"], 17.70)
+        for ln in res["lines"]:                            # boxes are normalized and inside the image
+            self.assertTrue(all(-1e-6 <= v <= 1 + 1e-6 for v in ln["box"]))
+
+    def test_heic_photo(self):
+        try:
+            import pillow_heif  # noqa: F401
+            from PIL import Image
+            pillow_heif.register_heif_opener()
+            path = self.dir / "iphone.heic"
+            make_receipt(self.dir / "h.jpg", self.LINES)
+            Image.open(self.dir / "h.jpg").save(path, quality=80)
+        except Exception as e:  # noqa: BLE001
+            self.skipTest(f"cannot write HEIC here: {e}")
+        self.assertEqual(extract(native.ocr([path])[str(path)])["amount"], 17.70)
+        prev = self.dir / "iphone_360.jpg"
+        native.make_preview(path, prev, 360)
+        from PIL import Image
+        with Image.open(prev) as im:
+            self.assertEqual((im.format, max(im.size)), ("JPEG", 360))
+
+    def test_scans_agree_with_the_original(self):
+        path = self.photo("scan.jpg", degrees=4)
+        orig = S.facts(native.ocr([path])[str(path)])
+        for mode in S_MODES:
+            with self.subTest(mode):
+                out = self.dir / f"scan_{mode}.jpg"
+                meta = native.scan_image(path, out, mode)
+                self.assertTrue(meta["ok"], meta)
+                scan = S.facts(native.ocr([out])[str(out)])
+                c = S.check({"amount": 17.70, "date": "2026-09-05"}, orig, scan, cropped=meta["cropped"])
+                self.assertTrue(c["ok"], c)
+        self.assertFalse(native.scan_image(self.dir / "missing.jpg", self.dir / "x.jpg", "enhance")["ok"])
+
+    def test_unreadable_file_is_an_empty_result(self):
+        bad = self.dir / "bad.jpg"
+        bad.write_bytes(b"not an image")
+        self.assertEqual(native.ocr([bad])[str(bad)]["lines"], [])
+
+
+S_MODES = ("crop", "box", "enhance")
+
+
+class TestBenchmarkTools(unittest.TestCase):
+    """The accuracy benchmark in bench/ must itself be right, or its numbers mean nothing."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(APP / "bench"))
+        import run as bench
+        import stress
+        import synth
+        cls.bench, cls.stress, cls.synth = bench, stress, synth
+
+    def test_merchant_match_ignores_spacing_and_case(self):
+        m = self.bench.merchant_ok
+        self.assertTrue(m("TESTNOODLEBAR", "Test Noodle Bar"))
+        self.assertTrue(m("Sainsburys Local", "Sainsbury's Local"))
+        self.assertFalse(m("Costa", "Greggs"))
+        self.assertFalse(m("", "Greggs"))
+        self.assertIsNone(m("anything", None))
+
+    def test_summary_counts_false_confident_separately_from_caught_errors(self):
+        def r(amount_ok, flagged):
+            wrong = not amount_ok
+            return {"amount_ok": amount_ok, "date_ok": None, "merchant_ok": None, "flagged": flagged, "wrong": wrong,
+                    "false_confident": wrong and not flagged, "secs": 1.0, "amount_conf": 0.9}
+        s = self.bench.summarize([r(True, False), r(True, True), r(False, True), r(False, False)])
+        self.assertEqual((s["n"], s["amount_acc"], s["flag_rate"]), (4, 50.0, 50.0))
+        self.assertEqual((s["false_confident"], s["catch_rate"]), (1, 50.0))
+
+    def test_synthetic_set_has_matching_truth_and_every_stress_variant_renders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            truth = self.synth.generate(tmp, n=3, seed=7)
+            self.assertEqual(sorted(truth), ["synth001", "synth002", "synth003"])
+            self.assertEqual(json.loads((Path(tmp) / "truth.json").read_text("utf-8")), truth)
+            for t in truth.values():
+                self.assertGreater(t["amount"], 0)
+            made = self.stress.make_all(Path(tmp) / "synth001.jpg", Path(tmp) / "stress")
+            self.assertEqual(set(made), set(self.stress.VARIANTS))
+            for variant, path in made.items():
+                self.assertEqual(path.stem, "synth001")                      # truth lookup uses the name
+                self.assertIsNotNone(self.stress.open_image(path), variant)
+            self.assertLess(self.stress.open_image(made["half"]).width, self.stress.open_image(made["blur"]).width)
+
+
+class TestExtractRules(unittest.TestCase):
+    """Rules learned from real receipts (OCR slips in dates, repeated item prices) and the two-reader merge."""
+    TODAY = date(2026, 10, 11)
+    PERIOD = [{"start": "2026-09-22", "end": "2026-10-09"}]
+
+    @staticmethod
+    def lines(rows):
+        return [{"text": t, "box": [0.1, 0.03 * i, 0.8, 0.02]} for i, t in enumerate(rows)]
+
+    def ex(self, rows, alt=None, exif=None, periods=None):
+        ocr = {"lines": self.lines(rows)}
+        if alt is not None:
+            ocr["alt"] = {"reader": "second", "lines": self.lines(alt)}
+        if exif:
+            ocr["exif_date"] = exif
+        return extract(ocr, today=self.TODAY, periods=periods)
+
+    def date_of(self, row):
+        return self.ex([row])["date"] if self.ex([row])["date_source"] == "ocr" else None
+
+    def test_dates_that_ocr_garbles(self):
+        self.assertEqual(self.date_of("15/08/202616:56"), "2026-08-15")             # date and time glued together
+        self.assertEqual(self.date_of("04 0ct 2026 15:07"), "2026-10-04")           # O read as 0 in the month
+        self.assertEqual(self.date_of("#6407 16:49:41 040CT2026"), "2026-10-04")     # all glued, O read as 0
+        self.assertEqual(self.date_of("9 Oct:'26 12:49 PM"), "2026-10-09")           # odd punctuation
+        self.assertEqual(self.date_of("O5/O9/2O26"), "2026-09-05")                  # letters for digits
+        self.assertEqual(self.date_of("15:14:51 050C12026"), "2026-10-05")           # T read as 1 (one wrong character)
+        self.assertIsNone(self.date_of("12 xyz 2026"))                              # no month fits
+        self.assertEqual(self.date_of("Date 05/10/2026"), "2026-10-05")             # the plain forms still work
+        self.assertIsNone(self.date_of("24/05/2006"))                               # a misread year is no date
+
+    def test_repeated_item_prices_do_not_beat_the_total(self):
+        rows = ["JS BAY LEAVES £1.15", "JS CLOVES £1.15", "JS SEED £1.15", "CUCUMBER £1.15", "CUCUMBER £1.15",
+                "ORGANIC BEEF £8.00", "BALANCE DUE £38.10", "Visa DEBIT £38.10", "CHANGE £0.00"]
+        self.assertEqual(self.ex(rows)["amount"], 38.10)
+
+    def test_labels_glued_by_ocr(self):
+        rows = ["1 x Latte f3.05", "1 x Bottled water f10.26", "1 X Pasta bake f9.51", "SUBTOTAL 39.94",
+                "BALANCE DUE 39.94", "VISACONTACTLESS 39.94"]
+        self.assertEqual(self.ex(rows)["amount"], 39.94)
+
+    def test_pound_misread_as_f(self):
+        self.assertEqual(self.ex(["Total f12.40"])["amount"], 12.40)
+
+    def test_single_reader_result_has_no_agreement_fields(self):
+        r = self.ex(["TOTAL £9.00", "05/10/2026"])
+        self.assertNotIn("agree", r)
+        self.assertEqual((r["amount"], r["date"], r["warnings"]), (9.0, "2026-10-05", []))
+
+    def test_two_readers_that_agree_raise_no_warning(self):
+        rows = ["TOTAL £9.00", "05/10/2026"]
+        r = self.ex(rows, alt=rows, exif="2026:10:05 12:00:00", periods=self.PERIOD)
+        self.assertEqual(r["warnings"], [])
+        self.assertEqual(r["agree"], {"amount": True, "date": True})
+
+    def test_readers_that_disagree_on_the_amount_ask_a_person(self):
+        r = self.ex(["Balance due £20.00", "05/10/2026"], alt=["Total £18.00", "05/10/2026"])
+        self.assertEqual(r["agree"]["amount"], False)
+        self.assertTrue(any("金额不同" in w for w in r["warnings"]))
+        self.assertEqual(set(r["amount_alts"][:2]), {18.0, 20.0})                  # both stay one click away
+
+    def test_readers_that_disagree_on_the_date_prefer_the_one_that_fits(self):
+        r = self.ex(["TOTAL £9.00", "08/10/2026"], alt=["TOTAL £9.00", "08/05/2026"], periods=self.PERIOD)
+        self.assertEqual(r["date"], "2026-10-08")
+        self.assertTrue(any("日期不同" in w for w in r["warnings"]))
+
+    def test_a_date_only_one_reader_found_needs_support(self):
+        rows = ["TOTAL £9.00", "05/10/2026"]
+        no_date = ["TOTAL £9.00"]
+        fits = self.ex(rows, alt=no_date, exif="2026:10:05 09:00:00")
+        self.assertFalse(any("只有一个" in w for w in fits["warnings"]))           # the photo's time backs it
+        alone = self.ex(rows, alt=no_date)
+        self.assertTrue(any("只有一个" in w for w in alone["warnings"]))
+
+    def test_printed_date_must_fit_the_photo_and_the_trip(self):
+        far = self.ex(["TOTAL £9.00", "05/10/2026"], exif="2026:10:07 18:00:00")
+        self.assertTrue(any("拍摄日期" in w for w in far["warnings"]))
+        near = self.ex(["TOTAL £9.00", "05/10/2026"], exif="2026:10:06 00:30:00")
+        self.assertEqual(near["warnings"], [])
+        outside = self.ex(["TOTAL £9.00", "01/09/2026"], periods=self.PERIOD)
+        self.assertTrue(any("不在报销日期内" in w for w in outside["warnings"]))
+
+    def test_no_printed_date_falls_back_to_the_photo(self):
+        r = self.ex(["TOTAL £9.00"], exif="2026:10:05 09:00:00")
+        self.assertEqual((r["date"], r["date_source"]), ("2026-10-05", "photo"))
+        self.assertTrue(any("拍摄日期" in w for w in r["warnings"]))
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows backend")
+class TestDeviceChoice(unittest.TestCase):
+    """native/devices.py picks the fastest backend that reads the same text as the CPU (fakes stand in for the models)."""
+    TEXTS = ["TOTAL", "£14.30"]
+
+    def choose(self, speeds, texts=None, cache=None, env=None):
+        import time
+        from unittest import mock
+        from native import devices
+        texts = texts or {}
+        made = []
+
+        def make(device):
+            made.append(device)
+            return device
+
+        def run(engine, img):
+            time.sleep(speeds[engine])
+            return texts.get(engine, self.TEXTS)
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with mock.patch.object(devices, "candidates", return_value=list(speeds)), \
+                mock.patch.object(devices, "_fingerprint", return_value={"fake": 1}), \
+                mock.patch.object(devices, "_test_images", return_value=[None] * 3), \
+                mock.patch.object(devices, "CACHE", Path(cache or tmp.name) / "device.json"), \
+                mock.patch.dict("os.environ", env or {}, clear=False):
+            got = devices.choose(make, run, log=lambda *_: None)
+        return got, made
+
+    def test_fastest_wins(self):
+        self.assertEqual(self.choose({"cpu": 0.02, "dml": 0.004, "ov-cpu": 0.01})[0], "dml")
+
+    def test_output_that_differs_from_the_cpu_is_never_used(self):
+        got, _ = self.choose({"cpu": 0.02, "dml": 0.002, "ov-gpu": 0.006}, texts={"dml": ["TOTAL", "£94.30"]})
+        self.assertEqual(got, "ov-gpu")
+
+    def test_a_backend_that_is_not_clearly_faster_is_not_worth_it(self):
+        self.assertEqual(self.choose({"cpu": 0.010, "ov-gpu": 0.0095})[0], "cpu")
+
+    def test_a_backend_that_fails_to_start_is_skipped(self):
+        import time
+        from unittest import mock
+        from native import devices
+        speeds = {"cpu": 0.02, "dml": 0.004}
+
+        def make(device):
+            if device == "dml":
+                raise RuntimeError("driver")
+            return device
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with mock.patch.object(devices, "candidates", return_value=list(speeds)), \
+                mock.patch.object(devices, "_fingerprint", return_value={"fake": 2}), \
+                mock.patch.object(devices, "_test_images", return_value=[None] * 2), \
+                mock.patch.object(devices, "CACHE", Path(tmp.name) / "device.json"):
+            self.assertEqual(devices.choose(make, lambda e, i: (time.sleep(0.001) or self.TEXTS), log=lambda *_: None),
+                             "cpu")
+
+    def test_the_result_is_cached_for_the_same_hardware(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        first, made1 = self.choose({"cpu": 0.02, "dml": 0.004}, cache=tmp.name)
+        second, made2 = self.choose({"cpu": 0.02, "dml": 0.004}, cache=tmp.name)
+        self.assertEqual((first, second), ("dml", "dml"))
+        self.assertTrue(made1 and not made2)                   # the second time nothing was measured
+
+    def test_forcing_a_device(self):
+        got, made = self.choose({"cpu": 0.02, "dml": 0.004}, env={"BX_OCR_DEVICE": "cpu"})
+        self.assertEqual((got, made), ("cpu", []))
+        got, _ = self.choose({"cpu": 0.02, "dml": 0.004}, env={"BX_OCR_DEVICE": "ov-gpu"})   # not there: measured instead
+        self.assertEqual(got, "dml")
+
+    def test_only_the_cpu_needs_no_measuring(self):
+        self.assertEqual(self.choose({"cpu": 0.01}), ("cpu", []))
+
+
+if __name__ == "__main__":
+    unittest.main()
