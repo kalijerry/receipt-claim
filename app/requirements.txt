@@ -1,3 +1,14 @@
 openpyxl>=3.1
 reportlab>=4.0
 pillow>=10.0
+
+# Windows only: text recognition and image processing in pure Python (macOS uses the Swift tools in ocr/).
+# Three ways to run the recognition models, the fastest one for the computer is measured on first start
+# (native/devices.py): onnxruntime-directml (any DirectX 12 GPU: NVIDIA / Intel / AMD; it replaces the plain
+# onnxruntime package, install only one of the two), OpenVINO on the CPU or an Intel GPU, or plain CPU.
+rapidocr>=3.10; sys_platform == "win32"
+onnxruntime-directml>=1.20; sys_platform == "win32"
+openvino>=2024.6; sys_platform == "win32"
+opencv-python>=4.8; sys_platform == "win32"
+numpy>=1.24; sys_platform == "win32"
+pillow-heif>=0.16; sys_platform == "win32"

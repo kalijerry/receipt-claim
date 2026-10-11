@@ -1,0 +1,6 @@
+# One repository for macOS and Windows: scripts must keep the line endings their shell needs,
+# whatever core.autocrlf the person checking out has.
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.command text eol=lf
+*.spec text eol=lf

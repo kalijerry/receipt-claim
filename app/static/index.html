@@ -10,7 +10,7 @@
   --blue:#0071e3;--link:#0066cc;--green:#1d8a3a;--green-soft:#e9f6ec;--orange:#b25000;--orange-soft:#fff4e5;
   --red:#d70015;--red-soft:#fdeceb;--violet:#6e3fd8;--violet-soft:#f1ecfd;
   --r-lg:22px;--r-md:14px;
-  --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Hiragino Sans GB","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Hiragino Sans GB","Segoe UI","Microsoft YaHei UI","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box}
 html{-webkit-font-smoothing:antialiased}
@@ -256,7 +256,7 @@ details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:1
       </div>
       <div class="row" style="margin-top:18px">
         <span class="faint">也可以从本机文件夹导入</span>
-        <input type="text" class="field sm" id="folder" placeholder="/Users/…/票据文件夹" style="flex:1;min-width:220px">
+        <input type="text" class="field sm" id="folder" style="flex:1;min-width:220px">
         <button class="pill gray" id="importFolder">导入</button>
       </div>
       <div class="busy" id="busy"><span class="spin"></span><span id="busyText">识别中…</span></div>
@@ -318,7 +318,7 @@ details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:1
   </div>
   <div class="foot">
     <div class="claimamt" id="sAmt"></div>
-    <span class="kbd">← → 切换　+ − 0 缩放　回车 / ⌘回车 确认</span>
+    <span class="kbd" id="kbdHint"></span>
     <button class="pill gray" id="sPrev">上一单</button>
     <button class="pill gray" id="sNext">下一单</button>
     <button class="pill big" id="sConfirm">确认无误</button>
@@ -331,6 +331,11 @@ details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:1
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SYM = {GBP:"£",EUR:"€",USD:"$",CNY:"¥"};
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = MAC ? "⌘" : "Ctrl";                  // the shortcut key shown in hints (Enter / wheel handlers accept both)
+$("#kbdHint").textContent = `← → 切换　+ − 0 缩放　回车 / ${MOD}+回车 确认`;
+$("#folder").placeholder = MAC ? "/Users/…/票据文件夹" : "C:\\Users\\…\\票据文件夹";
+$("#openFolder").textContent = `在${MAC ? "访达" : "资源管理器"}中打开文件夹`;
 let V = null;                 // latest view from the server
 let selected = new Set();     // receipt ids ticked in the list
 let filter = "all";
@@ -614,7 +619,7 @@ function renderSheet(fresh){
         return `<figure>
       <figcaption><span>票据 ${i+1}${it.members.length>1?" / "+it.members.length:""}　${esc(m.orig_name)}${scan?"（扫描版："+esc(m._scan.how)+"）":""}</span>
         <span>${scan?"":`<span class="legend"><span><i style="border-color:#0071e3"></i>金额</span><span><i style="border-color:#1d8a3a"></i>日期</span></span>`}</span></figcaption>
-      <div class="viewer" data-pic="${m.id}" title="单击放大 / 还原，拖动平移，⌘+滚轮或双指捏合缩放">
+      <div class="viewer" data-pic="${m.id}" title="单击放大 / 还原，拖动平移，${MOD}+滚轮或双指捏合缩放">
         <div class="stage"><img src="${src}" alt="票据图片"><div class="hls"></div></div>
         <div class="ztools"><button data-zt="out" title="缩小">−</button><span class="zl">100%</span>
           <button data-zt="in" title="放大">+</button><button data-zt="fit" class="fitb" title="完整显示">适应</button></div>
@@ -657,6 +662,7 @@ function renderSheet(fresh){
         <label>${isGroup?"票面金额":"金额"}<input type="number" class="field" step="0.01" min="0" data-k="amount" data-fk="amount-${m.id}" value="${m.amount??""}"></label>
       </div>
       ${alts.length?`<div class="alts">票面上的其他金额：${alts.map(a=>`<button data-alt="${a}">${a.toFixed(2)}</button>`).join("")}</div>`:""}
+      ${m.ocr?.alt?.date && m.ocr.alt.date!==m.date?`<div class="alts">另一个识别引擎读到的日期：<button data-altdate="${m.ocr.alt.date}">${m.ocr.alt.date}</button></div>`:""}
       <label class="full">商户<input type="text" class="field" data-k="merchant" data-fk="merchant-${m.id}" value="${esc(m.merchant)}"></label>
       <label class="full">备注<input type="text" class="field" data-k="note" data-fk="note-${m.id}" value="${esc(m.note)}" placeholder="可选，会写进报销表"></label>
       <label class="switch"><input type="checkbox" data-k="include" ${m.include?"checked":""}> 计入报销
@@ -846,6 +852,10 @@ $("#sForm").addEventListener("click", async e => {
   if(t.dataset.alt){
     const r = V.trip.receipts.find(x=>x.id===t.closest(".rec").dataset.id);
     r.amount = Number(t.dataset.alt); await save(); renderSheet();
+  }
+  if(t.dataset.altdate){
+    const r = V.trip.receipts.find(x=>x.id===t.closest(".rec").dataset.id);
+    r.date = t.dataset.altdate; await save(); renderSheet();
   }
   if(t.dataset.split){ unlinkIds([t.dataset.split]); await save(); renderSheet(true); }
   if(t.dataset.remove){

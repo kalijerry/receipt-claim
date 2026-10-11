@@ -2,6 +2,7 @@
 import re
 import statistics
 
+import native
 from .extract import MONEY_RE, build_rows, find_dates
 
 WORD_RE = re.compile(r"[A-Za-z0-9]{4,}")
@@ -23,6 +24,18 @@ def facts(ocr):
     heights = [ln["box"][3] for ln in ocr.get("lines", []) if len(ln.get("text", "")) >= 3]
     return {"money": sorted(money), "words": sorted(words), "dates": sorted(dates),
             "line_h": statistics.median(heights) if heights else None}
+
+
+def merge_facts(a, b):
+    """What either of two readings of the same picture showed."""
+    return {"money": sorted(set(a["money"]) | set(b["money"])), "words": sorted(set(a["words"]) | set(b["words"])),
+            "dates": sorted(set(a["dates"]) | set(b["dates"])), "line_h": a["line_h"] or b["line_h"]}
+
+
+def facts_all(ocr):
+    """facts() over every reader that looked at the picture (the leading one and the optional second one)."""
+    f = facts(ocr)
+    return merge_facts(f, facts(ocr["alt"])) if ocr.get("alt") else f
 
 
 def _strip_pound_misread(v):
@@ -156,17 +169,13 @@ def layout(items):
 
 COVER_ROWS_FIRST, COVER_ROWS_NEXT = 30, 46
 
-# System fonts with both Chinese and '£' (the built-in STSong-Light has no '£' and poor Latin spacing).
-PDF_FONTS = [("/System/Library/Fonts/STHeiti Light.ttc", "/System/Library/Fonts/STHeiti Medium.ttc"),
-             ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", None)]
-
-
 def register_fonts():
-    """-> (regular, bold, has_pound). Falls back to the built-in CID font."""
+    """-> (regular, bold, has_pound). Uses system fonts with both Chinese and '£' (listed per OS in native/);
+    falls back to the built-in CID font, which has no '£' and poor Latin spacing."""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.pdfbase.ttfonts import TTFont
-    for regular, bold in PDF_FONTS:
+    for regular, bold in native.pdf_fonts():
         try:
             if "BX-Regular" not in pdfmetrics.getRegisteredFontNames():
                 pdfmetrics.registerFont(TTFont("BX-Regular", regular))
