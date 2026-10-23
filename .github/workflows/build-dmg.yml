@@ -1,0 +1,79 @@
+name: Build macOS DMG
+
+# Unsigned, un-notarized DMG (source + 启动报销助手.command). Run it by hand from the Actions tab,
+# or push a tag like v0.1.0 to also attach the DMG to a GitHub Release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/build_dmg.sh"
+      - "packaging/使用说明_macos.txt"
+      - "启动报销助手.command"
+      - ".github/workflows/build-dmg.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build DMG
+        run: packaging/build_dmg.sh
+
+      - name: Check DMG contents
+        run: |
+          set -e
+          dmg=$(ls packaging/receipt-claim-macos-v*.dmg)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
+          trap 'hdiutil detach "$mnt" -force' EXIT
+          test -x "$mnt/启动报销助手.command"
+          test -f "$mnt/使用说明.txt"
+          test -f "$mnt/LICENSE"
+          test -f "$mnt/app/server.py"
+          test -f "$mnt/app/requirements.txt"
+          test ! -e "$mnt/app/.venv"
+          test ! -e "$mnt/app/ocr/ocr"
+
+      - name: Smoke test the launcher (uv, venv, Swift tools, server)
+        run: |
+          set -e
+          dmg=$(ls packaging/receipt-claim-macos-v*.dmg)
+          mnt=$(mktemp -d)
+          work=$(mktemp -d)
+          hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
+          cp -R "$mnt/." "$work/"
+          hdiutil detach "$mnt" -force
+          BX_OUTPUT="$work/output" "$work/启动报销助手.command" > "$work/launcher.log" 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8765/ > /dev/null 2>&1; then ok=1; break; fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 2
+          done
+          kill "$pid" 2>/dev/null || true
+          cat "$work/launcher.log"
+          test "$ok" = 1
+          test -x "$work/app/.venv/bin/python"
+          test -x "$work/app/ocr/ocr"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: receipt-claim-macos-dmg
+          path: |
+            packaging/receipt-claim-macos-v*.dmg
+            packaging/receipt-claim-macos-v*.dmg.sha256
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packaging/receipt-claim-macos-v*.dmg
+            packaging/receipt-claim-macos-v*.dmg.sha256
