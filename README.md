@@ -48,6 +48,8 @@ packaging/build_dmg.sh
 ```
 会在 `packaging/dist/报销助手/` 生成文件夹，并打包成 `packaging/receipt-claim-macos-v<版本>.dmg`。macOS 版不冻结 Python、不预编译识别工具——DMG 里是源码，`启动报销助手.command` 会在接收者自己的电脑上第一次启动时自动安装 uv、建虚拟环境、装依赖并编译识别工具（见上方「使用」）。这个 DMG 没有签名也没有公证（没有 Apple 开发者账号），第一次打开会被 Gatekeeper 拦截，需要右键「打开」，详见 `packaging/使用说明_macos.txt`。
 
+不想在本机打包的话，用 GitHub Actions：在仓库的 Actions 页选 `Build macOS DMG` 手动运行，产物在该次运行的 Artifacts 里；推送形如 `v0.1.0` 的 tag 时，DMG 会自动附到对应的 Release。工作流（`.github/workflows/build-dmg.yml`）会在 macOS 机器上打包、检查 DMG 内容，并真的运行一遍 `启动报销助手.command`（装 uv、建虚拟环境、编译识别工具、启动服务）确认能起来。
+
 ## 项目结构
 ```
 app/
