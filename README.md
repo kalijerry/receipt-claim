@@ -10,16 +10,17 @@
 | 系统 | macOS 12 及以上 | Windows 10 / 11 |
 | Python | 3.10 及以上 | 3.10 – 3.13 |
 | 文字识别 / 扫描 | 系统自带 Vision / Core Image，需要 Xcode Command Line Tools（`swiftc`）：`xcode-select --install` | 纯 Python：RapidOCR 的两个互相独立的识别模型 + OpenCV；第一次启动时在这台电脑上实测 CPU、DirectML（NVIDIA / Intel / AMD 显卡）、OpenVINO（CPU 或 Intel 核显），选最快且识别结果与 CPU 一致的，通常比单纯 CPU 快一倍 |
-| 首次安装 | 自动编译识别工具 | 自动安装依赖（约 250 MB）并下载识别模型（约 30 MB），需要联网，只此一次；之后完全离线 |
+| 首次安装 | 自动安装 [uv](https://github.com/astral-sh/uv)（Python 包管理器）、建虚拟环境、装依赖，并编译识别工具，需要联网，只此一次；之后完全离线 | 自动安装依赖（约 250 MB）并下载识别模型（约 30 MB），需要联网，只此一次；之后完全离线 |
 
-## 下载即用（Windows，不需要装 Python）
-到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-windows-x64-v*.zip`，解压后双击 `报销助手.exe`。识别模型已包含在里面，全程不需要联网；票据和生成的报销包保存在 exe 旁边的 `output` 文件夹。没有代码签名，Windows 可能提示「已保护你的电脑」，点「更多信息」→「仍要运行」即可。
+## 下载即用
+- **Windows（不需要装 Python）**：到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-windows-x64-v*.zip`，解压后双击 `报销助手.exe`。识别模型已包含在里面，全程不需要联网；票据和生成的报销包保存在 exe 旁边的 `output` 文件夹。没有代码签名，Windows 可能提示「已保护你的电脑」，点「更多信息」→「仍要运行」即可。
+- **macOS**：到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-macos-v*.dmg`，挂载后把 `报销助手` 文件夹拖到任意位置，双击里面的 `启动报销助手.command`。第一次启动会自动装好 Python 依赖并编译识别工具（见下方「使用」）。没有 Apple 签名和公证，第一次打开会被 Gatekeeper 拦截，右键（或按住 Control 点按）选择「打开」即可，详见包里的 `使用说明.txt`。
 
 ## 使用（从源码运行）
 - macOS：双击 `启动报销助手.command`
 - Windows：双击 `启动报销助手.bat`
 
-第一次会自动安装依赖，之后浏览器会打开 http://127.0.0.1:8765
+第一次会自动安装依赖（macOS 上先装 uv，再用它建虚拟环境、装依赖），之后浏览器会打开 http://127.0.0.1:8765
 
 1. **新建出差**：一次出差 = 一个文件夹 `output/<出差名>/`，可以有多段日期
 2. **报销日期**：每段包含首尾两天，总额度 = 总天数 × 每日额度（默认 £50）
@@ -34,11 +35,18 @@
 
 Windows 上如果提示「文件正被其他程序占用」，是因为生成的 Excel / PDF 还开着，关掉再生成一次即可。
 
-## 自己打包 EXE
+## 自己打包
+Windows（PyInstaller 冻结成 EXE）：
 ```bat
 packaging\build_exe.bat
 ```
 需要联网和 Python 3.11 – 3.13，约 5 分钟。会在 `packaging\dist\报销助手\` 生成可直接运行的程序，并压缩成 `packaging\receipt-claim-windows-x64-v<版本>.zip`（约 170 MB，版本号在 `app/version.py`）。用 PyInstaller 的「文件夹」模式而不是单文件 exe：单文件每次启动都要把几百 MB 解压到临时目录，慢得多，也更容易被杀毒软件误报。
+
+macOS（打包源码 + 启动脚本成 DMG）：
+```bash
+packaging/build_dmg.sh
+```
+会在 `packaging/dist/报销助手/` 生成文件夹，并打包成 `packaging/receipt-claim-macos-v<版本>.dmg`。macOS 版不冻结 Python、不预编译识别工具——DMG 里是源码，`启动报销助手.command` 会在接收者自己的电脑上第一次启动时自动安装 uv、建虚拟环境、装依赖并编译识别工具（见上方「使用」）。这个 DMG 没有签名也没有公证（没有 Apple 开发者账号），第一次打开会被 Gatekeeper 拦截，需要右键「打开」，详见 `packaging/使用说明_macos.txt`。
 
 ## 项目结构
 ```
@@ -56,7 +64,7 @@ app/
   ocr/scan.swift     macOS：找边、透视矫正、增强
   static/index.html  界面
   bench/             准确度评测（run.py）、退化副本（stress.py）、合成票据（synth.py）
-packaging/           打包成 EXE：build_exe.bat、receipt-claim.spec
+packaging/           打包：build_exe.bat / receipt-claim.spec（Windows EXE），build_dmg.sh（macOS DMG）
   tests/
 启动报销助手.command   macOS 启动器
 启动报销助手.bat       Windows 启动器

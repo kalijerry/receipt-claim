@@ -16,10 +16,12 @@ __pycache__/
 # Recognition models downloaded on first run (kept outside the venv)
 app/models/
 
-# Packaging (PyInstaller): build environment, intermediate files, the finished package
+# Packaging: build environment, intermediate files, the finished package
+# (Windows: PyInstaller into .zip; macOS: source folder into .dmg)
 packaging/.buildvenv/
 packaging/build/
 packaging/dist/
 packaging/THIRD_PARTY_NOTICES.txt
 packaging/*.zip
+packaging/*.dmg
 packaging/*.sha256
