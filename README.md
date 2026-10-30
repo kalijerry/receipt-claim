@@ -14,7 +14,7 @@
 
 ## 下载即用
 - **Windows（不需要装 Python）**：到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-windows-x64-v*.zip`，解压后双击 `报销助手.exe`。识别模型已包含在里面，全程不需要联网；票据和生成的报销包保存在 exe 旁边的 `output` 文件夹。没有代码签名，Windows 可能提示「已保护你的电脑」，点「更多信息」→「仍要运行」即可。
-- **macOS**：到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-macos-v*.dmg`，挂载后把 `报销助手` 文件夹拖到任意位置，双击里面的 `启动报销助手.command`。第一次启动会自动装好 Python 依赖并编译识别工具（见下方「使用」）。没有 Apple 签名和公证，第一次打开会被 Gatekeeper 拦截，右键（或按住 Control 点按）选择「打开」即可，详见包里的 `使用说明.txt`。
+- **macOS**：到 [Releases](https://github.com/kalijerry/receipt-claim/releases) 下载 `receipt-claim-macos-v*.dmg`，挂载后把 `报销助手` 文件夹拖到任意位置，双击里面的 `启动报销助手.command`；也可以直接在 DMG 里双击，它会先把自己复制到 `~/报销助手` 再运行。第一次启动需要联网，会自动装 uv、建虚拟环境、装依赖并编译识别工具（见下方「使用」）。没有 Apple 签名和公证，第一次打开会被 Gatekeeper 拦截，三种解决办法写在 DMG 里的 `使用说明.txt`（右键「打开」/ 系统设置里「仍要打开」/ 用 `bash` 运行）。
 
 ## 使用（从源码运行）
 - macOS：双击 `启动报销助手.command`
@@ -46,9 +46,9 @@ macOS（打包源码 + 启动脚本成 DMG）：
 ```bash
 packaging/build_dmg.sh
 ```
-会在 `packaging/dist/报销助手/` 生成文件夹，并打包成 `packaging/receipt-claim-macos-v<版本>.dmg`。macOS 版不冻结 Python、不预编译识别工具——DMG 里是源码，`启动报销助手.command` 会在接收者自己的电脑上第一次启动时自动安装 uv、建虚拟环境、装依赖并编译识别工具（见上方「使用」）。这个 DMG 没有签名也没有公证（没有 Apple 开发者账号），第一次打开会被 Gatekeeper 拦截，需要右键「打开」，详见 `packaging/使用说明_macos.txt`。
+会在 `packaging/dist/dmg/报销助手/` 生成文件夹，并打包成 `packaging/receipt-claim-macos-v<版本>.dmg`。macOS 版不冻结 Python、不预编译识别工具——DMG 里是源码，`启动报销助手.command` 会在接收者自己的电脑上第一次启动时自动安装 uv、建虚拟环境、装依赖并编译识别工具（见上方「使用」）。这个 DMG 没有签名也没有公证（没有 Apple 开发者账号），第一次打开会被 Gatekeeper 拦截，需要右键「打开」等，办法见 `packaging/使用说明_macos.txt`。
 
-不想在本机打包的话，用 GitHub Actions：在仓库的 Actions 页选 `Build macOS DMG` 手动运行，产物在该次运行的 Artifacts 里；推送形如 `v0.1.0` 的 tag 时，DMG 会自动附到对应的 Release。工作流（`.github/workflows/build-dmg.yml`）会在 macOS 机器上打包、检查 DMG 内容，并真的运行一遍 `启动报销助手.command`（装 uv、建虚拟环境、编译识别工具、启动服务）确认能起来。
+不想在本机打包的话，用 GitHub Actions（`.github/workflows/build-dmg.yml`，在 macOS 机器上跑）：在仓库的 Actions 页选 `Build macOS DMG` → Run workflow，DMG 在该次运行的 Artifacts 里；在 `release_tag` 里填一个已有的 Release（比如 `v0.1.0`），DMG 会同时上传到那个 Release 供大家下载；推送形如 `v0.2.0` 的 tag 时会自动创建 / 更新对应的 Release。工作流会检查 DMG 内容，并在一台没装过任何东西的环境里，直接从挂载好的（只读）DMG 里运行 `启动报销助手.command`（装 uv、建虚拟环境、编译识别工具、启动服务），确认网页能打开才算通过。
 
 ## 项目结构
 ```
