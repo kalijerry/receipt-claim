@@ -1,9 +1,16 @@
 name: Build macOS DMG
 
-# Unsigned, un-notarized DMG (source + 启动报销助手.command). Run it by hand from the Actions tab,
-# or push a tag like v0.1.0 to also attach the DMG to a GitHub Release.
+# Unsigned, un-notarized DMG (source + 启动报销助手.command).
+# - Run it by hand from the Actions tab: the DMG is in the run's Artifacts. Fill in "release_tag"
+#   (e.g. v0.1.0) to also upload it to that existing release.
+# - Push a tag like v0.2.0: the DMG is attached to that tag's release (created if missing).
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional: upload the DMG to this existing release (e.g. v0.1.0)"
+        required: false
+        default: ""
   push:
     tags: ["v*"]
   pull_request:
@@ -19,6 +26,7 @@ permissions:
 jobs:
   dmg:
     runs-on: macos-14
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -32,36 +40,50 @@ jobs:
           mnt=$(mktemp -d)
           hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
           trap 'hdiutil detach "$mnt" -force' EXIT
-          test -x "$mnt/启动报销助手.command"
+          ls -la "$mnt" "$mnt/报销助手"
           test -f "$mnt/使用说明.txt"
-          test -f "$mnt/LICENSE"
-          test -f "$mnt/app/server.py"
-          test -f "$mnt/app/requirements.txt"
-          test ! -e "$mnt/app/.venv"
-          test ! -e "$mnt/app/ocr/ocr"
+          test -x "$mnt/报销助手/启动报销助手.command"
+          test -f "$mnt/报销助手/使用说明.txt"
+          test -f "$mnt/报销助手/LICENSE"
+          test -f "$mnt/报销助手/app/server.py"
+          test -f "$mnt/报销助手/app/requirements.txt"
+          test ! -e "$mnt/报销助手/app/.venv"
+          test ! -e "$mnt/报销助手/app/ocr/ocr"
 
-      - name: Smoke test the launcher (uv, venv, Swift tools, server)
+      # What a user does: mount the DMG and double-click the launcher inside it (read-only volume),
+      # on a Mac that has never seen this app (empty HOME: no uv, no virtual environment).
+      - name: Smoke test, launching straight from the mounted DMG
         run: |
           set -e
           dmg=$(ls packaging/receipt-claim-macos-v*.dmg)
           mnt=$(mktemp -d)
-          work=$(mktemp -d)
+          fresh=$(mktemp -d)
+          pid=""
+          cleanup() {
+            kill "$pid" 2>/dev/null || true
+            pkill -f "server.py" 2>/dev/null || true
+            cat "$fresh/launcher.log" 2>/dev/null || true
+            hdiutil detach "$mnt" -force > /dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
           hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
-          cp -R "$mnt/." "$work/"
-          hdiutil detach "$mnt" -force
-          BX_OUTPUT="$work/output" "$work/启动报销助手.command" > "$work/launcher.log" 2>&1 &
+          if touch "$mnt/报销助手/probe" 2>/dev/null; then echo "the DMG is not read-only"; exit 1; fi
+          HOME="$fresh" BX_OUTPUT="$fresh/output" "$mnt/报销助手/启动报销助手.command" > "$fresh/launcher.log" 2>&1 &
           pid=$!
           ok=0
-          for i in $(seq 1 90); do
+          for i in $(seq 1 120); do
             if curl -fsS http://127.0.0.1:8765/ > /dev/null 2>&1; then ok=1; break; fi
             kill -0 "$pid" 2>/dev/null || break
             sleep 2
           done
-          kill "$pid" 2>/dev/null || true
-          cat "$work/launcher.log"
           test "$ok" = 1
-          test -x "$work/app/.venv/bin/python"
-          test -x "$work/app/ocr/ocr"
+          app="$fresh/报销助手"
+          test -x "$app/启动报销助手.command"
+          test -x "$app/app/.venv/bin/python"
+          test -f "$app/app/.venv/requirements.installed"
+          test -x "$app/app/ocr/ocr"
+          test -x "$app/app/ocr/scan"
+          test -x "$fresh/.local/bin/uv"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -70,10 +92,14 @@ jobs:
             packaging/receipt-claim-macos-v*.dmg
             packaging/receipt-claim-macos-v*.dmg.sha256
 
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            packaging/receipt-claim-macos-v*.dmg
-            packaging/receipt-claim-macos-v*.dmg.sha256
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -e
+          if [ "$GITHUB_REF_TYPE" = tag ] && ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --notes "macOS DMG（未签名），使用方法见 DMG 里的 使用说明.txt"
+          fi
+          gh release upload "$TAG" packaging/receipt-claim-macos-v*.dmg packaging/receipt-claim-macos-v*.dmg.sha256 --clobber
