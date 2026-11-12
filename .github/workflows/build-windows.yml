@@ -1,0 +1,81 @@
+name: Build Windows EXE
+
+# Windows package (PyInstaller folder + 报销助手.exe, models included, works offline) zipped as
+# receipt-claim-windows-x64-v<version>.zip. Push a tag like v0.2.0 to attach it to that GitHub Release, or run it by
+# hand from the Actions tab (fill in "release_tag" to attach the zip to an existing release).
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Attach the zip to this existing release (e.g. v0.2.0); leave empty to only build"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/build_exe.bat"
+      - "packaging/receipt-claim.spec"
+      - "packaging/make_zip.py"
+      - "packaging/make_notices.py"
+      - "packaging/使用说明.txt"
+      - "app/requirements.txt"
+      - ".github/workflows/build-windows.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build EXE and zip
+        shell: cmd
+        run: call packaging\build_exe.bat
+
+      - name: Smoke test the EXE (starts, serves the page, EHR import is in it)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Get-ChildItem packaging\receipt-claim-windows-x64-v*.zip | Select-Object -First 1
+          $work = Join-Path $env:RUNNER_TEMP "smoke"
+          Expand-Archive $zip.FullName -DestinationPath $work
+          $exe = Get-ChildItem $work -Recurse -Filter *.exe | Where-Object { $_.Directory.Parent.FullName -eq $work } | Select-Object -First 1
+          $env:BX_OUTPUT = Join-Path $work "output"
+          $log = Join-Path $work "exe.log"
+          $p = Start-Process $exe.FullName -ArgumentList "--no-browser" -PassThru -NoNewWindow `
+                 -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep 2
+            if ($p.HasExited) { break }
+            try { $html = (Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing).Content; $ok = $true; break } catch {}
+          }
+          if (-not $p.HasExited) { Stop-Process $p.Id -Force }
+          Get-Content $log, "$log.err" -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "the exe did not serve the page" }
+          if ($html -notmatch "ehrOpen") { throw "the page has no EHR import" }
+          if (-not (Test-Path (Join-Path $exe.Directory.FullName "使用说明.txt"))) { throw "使用说明.txt missing" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: receipt-claim-windows-zip
+          path: |
+            packaging/receipt-claim-windows-x64-v*.zip
+            packaging/receipt-claim-windows-x64-v*.zip.sha256
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --notes ""
+          gh release upload "$TAG" packaging/receipt-claim-windows-x64-v*.zip packaging/receipt-claim-windows-x64-v*.zip.sha256 --clobber

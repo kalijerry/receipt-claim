@@ -12,6 +12,6 @@
 
 ## 下载
 - **macOS**：`receipt-claim-macos-v0.2.0.dmg`（由 GitHub Actions 自动构建，未签名）。打开后双击 `启动报销助手.command`，第一次运行会自动安装依赖。
-- **Windows**：从源码运行 `启动报销助手.bat`；也可以继续用 v0.1.0 的 exe（不含本功能）。
+- **Windows**：`receipt-claim-windows-x64-v0.2.0.zip`（由 GitHub Actions 自动构建，不需要安装 Python）。解压整个文件夹，双击 `报销助手.exe`；黑色窗口请保持打开。没有代码签名，SmartScreen 提示时点「更多信息」→「仍要运行」。
 
 升级时把旧版本的 `output` 文件夹复制过来即可，已有出差数据完全兼容。
