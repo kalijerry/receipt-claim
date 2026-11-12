@@ -24,6 +24,7 @@ from core import trip as T  # noqa: E402
 from core.excel import write_workbook  # noqa: E402
 from core.extract import extract, locate  # noqa: E402
 from core import scan as S  # noqa: E402
+from core import ehr as E  # noqa: E402
 
 OUTPUT = Path(os.environ.get("BX_OUTPUT", ROOT / "output"))
 STATIC = APP / "static"
@@ -489,6 +490,8 @@ class H(BaseHTTPRequestHandler):
             seg, q = self.parts()
             if method == "POST" and len(seg) == 4 and seg[:2] == ["api", "trips"] and seg[3] == "scan":
                 return self.scan(seg[2], q)
+            if method == "POST" and len(seg) == 4 and seg[:2] == ["api", "trips"] and seg[3] == "ehr":
+                return self.ehr(seg[2])
             with LOCK:
                 return self.route(method, seg, q)
         except FileNotFoundError:
@@ -524,6 +527,21 @@ class H(BaseHTTPRequestHandler):
                                        "scan_bad": sum(1 for x in sc if not x["ok"])})
         finally:
             SCAN_LOCK.release()
+
+    def ehr(self, name):
+        """Read business trips from an EHR screenshot. Only reads: the browser adds the chosen ones as periods."""
+        load_trip(name)                              # 404 for an unknown trip
+        ext = Path(urllib.parse.unquote(self.headers.get("X-Filename", "ehr.png"))).suffix.lower()
+        if ext not in T.IMAGE_EXT:
+            raise ValueError("请选择 EHR 出差列表的截图（图片文件）")
+        tmp = trip_dir(name) / CACHE_DIR / f"ehr_{uuid.uuid4().hex[:8]}{ext}"
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(self.body())
+        try:
+            raw = native.ocr_chinese([tmp]).get(str(tmp), {"lines": []})
+        finally:
+            tmp.unlink(missing_ok=True)
+        return self.send(200, E.parse(raw))
 
     def route(self, method, seg, q):
         if seg == ["api", "trips"] and method == "POST":

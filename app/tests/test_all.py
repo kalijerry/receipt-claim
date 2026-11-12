@@ -11,6 +11,7 @@ sys.path.insert(0, str(APP))
 import native  # noqa: E402
 from core import scan as S  # noqa: E402
 from core import trip as T  # noqa: E402
+from core import ehr as E  # noqa: E402
 from core.excel import write_workbook  # noqa: E402
 from core.extract import build_rows, extract  # noqa: E402
 
@@ -786,6 +787,67 @@ class TestDeviceChoice(unittest.TestCase):
 
     def test_only_the_cpu_needs_no_measuring(self):
         self.assertEqual(self.choose({"cpu": 0.01}), ("cpu", []))
+
+
+class TestEhr(unittest.TestCase):
+    """Trips read from a screenshot of the EHR 出差 list (OCR fragments as the Chinese reader returns them)."""
+
+    @staticmethod
+    def ln(text, x, y, w=0.06, h=0.04):
+        return {"text": text, "conf": 0.99, "box": [x, y, w, h]}
+
+    def table(self, rows, header=True):
+        cols = [0.02, 0.18, 0.33, 0.44, 0.55, 0.71, 0.85, 0.96]
+        lines = [self.ln(n, x, 0.1, 0.03) for n, x in zip(
+            ["开始时间", "结束时间", "出差时长", "单据类型", "申请时间", "出差事由", "审批状态", "操作"], cols)] if header else []
+        for i, row in enumerate(rows):
+            y = 0.2 + i * 0.1
+            for j, (txt, x) in enumerate(zip(row, cols)):
+                if txt:
+                    lines.append(self.ln(txt, x, y + (0.005 if j % 2 else 0)))   # fragments of a row are not level
+        return {"lines": sorted(lines, key=lambda l: l["box"][0])}           # OCR order must not matter
+
+    def test_rows(self):
+        raw = self.table([
+            ["2026-11-04 09:00", "2026-11-05 18:00", "2天", "申请", "2026-11-04 19:25:35", "Tesco剑桥AP升级", "通过", "日志"],
+            ["2026-10-12 12:00", "2026-10-13 18:00", "1.5天", "申请", "2026-10-09 19:08:10", "剑桥RoystonTescoAP基站升级", "通过", "日志"],
+            ["2026-10-16 09:00", "2026-10-16 13:00", "0.5天", "申请", "2026-10-17 03:14:32", "Tesco Pinner检查", "驳回", "日志"],
+        ])
+        trips = E.parse(raw)["trips"]
+        self.assertEqual([(t["start"], t["end"], t["days"]) for t in trips],
+                         [("2026-10-12", "2026-10-13", 2), ("2026-10-16", "2026-10-16", 1), ("2026-11-04", "2026-11-05", 2)])
+        self.assertEqual(trips[0]["ehr_days"], 1.5)
+        self.assertEqual(trips[0]["reason"], "剑桥RoystonTescoAP基站升级")
+        self.assertEqual([t["approved"] for t in trips], [True, False, True])
+        self.assertEqual(trips[1]["status"], "驳回")
+        self.assertFalse(any(t["warning"] for t in trips))
+
+    def test_half_day_counts_as_one(self):
+        self.assertEqual([E.claim_days(x) for x in (0.5, 1, 1.5, 2, 2.5)], [1, 1, 2, 2, 3])
+
+    def test_ehr_days_differ_from_dates(self):
+        raw = self.table([["2026-10-12 18:00", "2026-10-13 09:00", "0.5天", "申请", "2026-10-09 19:08:10", "夜车", "通过", ""]])
+        t = E.parse(raw)["trips"][0]
+        self.assertEqual(t["days"], 2)
+        self.assertIn("请核对", t["warning"])
+
+    def test_without_header(self):
+        raw = self.table([["2026-10-30 09:00", "2026-10-30 18:00", "1天", "申请", "2026-10-30 18:59:05", "B&Q 调货", "通过", "日志"]],
+                         header=False)
+        t = E.parse(raw)["trips"][0]
+        self.assertEqual((t["start"], t["end"], t["ehr_days"], t["reason"], t["approved"]),
+                         ("2026-10-30", "2026-10-30", 1.0, "B&Q 调货", True))
+
+    def test_nothing_found(self):
+        self.assertTrue(E.parse({"lines": [self.ln("出差日期", 0, 0)]})["problems"])
+        self.assertEqual(E.parse({"lines": []})["trips"], [])
+
+    def test_periods_keep_ehr_fields(self):
+        ps = T.sort_periods([{"start": "2026-10-14", "end": "2026-10-15", "reason": "B", "ehr_days": 2.0},
+                             {"start": "2026-10-12", "end": "2026-10-13", "reason": "A", "ehr_days": 1.5}])
+        T.check_periods(ps)
+        self.assertEqual([p["reason"] for p in ps], ["A", "B"])
+        self.assertEqual(T.total_days(ps), 4)
 
 
 if __name__ == "__main__":
