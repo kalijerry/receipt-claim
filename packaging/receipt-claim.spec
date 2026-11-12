@@ -13,7 +13,7 @@ datas = [(str(APP / "static"), "static"),
          (str(ROOT / "LICENSE"), "."),
          (str(ROOT / "packaging" / "THIRD_PARTY_NOTICES.txt"), ".")]
 binaries = []
-hiddenimports = ["version", "native.windows", "native.devices", "core.trip", "core.excel", "core.extract", "core.scan"]
+hiddenimports = ["version", "native.windows", "native.devices", "core.trip", "core.excel", "core.extract", "core.scan", "core.ehr"]
 for package in ("rapidocr", "pillow_heif", "openvino", "onnxruntime"):
     d, b, h = collect_all(package)
     datas += d
