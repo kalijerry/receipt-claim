@@ -70,6 +70,18 @@ section{margin:0 0 22px}
 .period:first-child{border-top:1px solid var(--hair)}
 .period .idx{width:64px;color:var(--mute);font-size:15px}
 .period .days{margin-left:auto;font-weight:600;min-width:56px;text-align:right}
+.period .why{color:var(--mute);font-size:14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* EHR screenshot -> periods */
+#ehr .box{max-width:900px;max-height:100%;align-self:center}
+#ehr .ebody{overflow-y:auto;overflow-x:hidden;padding:18px 24px;min-height:120px}
+.edrop{border:1.5px dashed var(--line);border-radius:var(--r-md);padding:30px;text-align:center;cursor:pointer}
+.edrop.over{border-color:var(--blue);background:rgba(0,113,227,.04)}
+.etrip{display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:start;padding:12px 4px;border-bottom:1px solid var(--hair)}
+.etrip.off{opacity:.55}
+.etrip .w{color:var(--orange);font-size:13px;margin-top:4px}
+.etrip .r{color:var(--mute);font-size:14px;margin-top:2px}
+.etrip .n{font-weight:600;text-align:right;white-space:nowrap}
 .problems{margin:14px 0 0;padding:0;list-style:none;color:var(--red);font-size:15px}
 .rate{display:flex;align-items:center;gap:12px;margin-top:22px;flex-wrap:wrap}
 
@@ -235,9 +247,10 @@ details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:1
   <div class="wrap">
     <section class="tile">
       <h2><span class="num">1</span>报销日期</h2>
-      <p class="lead">一次出差可以分好几段，每段包含首尾两天。总额度 = 总天数 × 每日额度。</p>
+      <p class="lead">一次出差可以分好几段，每段包含首尾两天（不足一天按一天算）。总额度 = 总天数 × 每日额度。</p>
       <div id="periods"></div>
-      <p style="margin:16px 0 0"><button class="lnk" id="addPeriod">＋ 添加一段日期</button></p>
+      <p style="margin:16px 0 0;display:flex;gap:22px;flex-wrap:wrap"><button class="lnk" id="addPeriod">＋ 添加一段日期</button>
+        <button class="lnk" id="ehrOpen">从 EHR 出差截图识别</button></p>
       <div class="rate">
         <span>每日额度</span>
         <input type="number" class="field sm" id="rate" min="0" step="1" style="width:100px">
@@ -322,6 +335,27 @@ details pre{white-space:pre-wrap;background:#f5f5f7;border-radius:10px;padding:1
     <button class="pill gray" id="sPrev">上一单</button>
     <button class="pill gray" id="sNext">下一单</button>
     <button class="pill big" id="sConfirm">确认无误</button>
+  </div>
+</div></div>
+
+<div class="sheet" id="ehr"><div class="box">
+  <div class="top">
+    <h3>从 EHR 出差截图识别</h3>
+    <button class="close" id="eClose" aria-label="关闭">✕</button>
+  </div>
+  <div class="ebody">
+    <div class="edrop" id="eDrop">
+      <div class="big">把 EHR「我的出差」列表截图拖到这里，或直接 <b id="ePasteKey"></b> 粘贴</div>
+      <div class="mute" style="margin-top:6px">或 <span style="color:var(--link)">点击选择图片</span>　·　截图需包含「开始时间」「结束时间」两列</div>
+      <input type="file" id="eFile" accept="image/*" hidden>
+    </div>
+    <p class="mute" id="eState" style="margin:14px 0 0"></p>
+    <div id="eList"></div>
+  </div>
+  <div class="foot">
+    <div class="claimamt" id="eSum"></div>
+    <button class="pill gray" id="eCancel">取消</button>
+    <button class="pill" id="eAdd" disabled>添加到报销日期</button>
   </div>
 </div></div>
 
@@ -428,6 +462,7 @@ function renderPeriods(){
       <span class="idx">第 ${i+1} 段</span>
       <input type="date" class="field sm" data-k="start" value="${esc(p.start)}"><span class="mute">至</span>
       <input type="date" class="field sm" data-k="end" value="${esc(p.end)}">
+      ${p.reason?`<span class="why" title="${esc(p.reason)}">${esc(p.reason)}</span>`:""}
       <span class="days">${days(p)} 天</span>
       <button class="lnk red" data-del="${i}">删除</button></div>`).join("")
     || `<p class="mute" style="margin:0">还没有日期。</p>`;
@@ -451,6 +486,64 @@ $("#addPeriod").onclick = () => {
   ps.push({start, end: start}); save();
 };
 $("#rate").onchange = save; $("#currency").onchange = save;
+
+// ---------------- 1b. periods from an EHR screenshot ----------------
+// The server only reads the screenshot; the trips the user ticks are added here as periods and saved as usual.
+let EHR = [];
+$("#ePasteKey").textContent = MOD + "+V";
+function openEhr(){
+  EHR = []; $("#eList").innerHTML = ""; $("#eState").textContent = ""; $("#eSum").textContent = "";
+  $("#eAdd").disabled = true; $("#ehr").classList.add("on");
+}
+function closeEhr(){ $("#ehr").classList.remove("on"); }
+const hasPeriod = t => V.trip.periods.some(p => p.start===t.start && p.end===t.end);
+async function readEhr(file){
+  if(!file || !/^image\//.test(file.type||"image/")) return toast("请选择图片");
+  $("#eState").textContent = "正在识别截图…"; $("#eList").innerHTML = ""; $("#eAdd").disabled = true;
+  try{
+    const name = file.name && file.name !== "image.png" ? file.name : "ehr.png";
+    const res = await api("POST", tripUrl("/ehr"), await file.arrayBuffer(),
+      {"X-Filename": encodeURIComponent(name), "Content-Type":"application/octet-stream"});
+    EHR = res.trips.map(t => ({...t, have: hasPeriod(t), on: t.approved && !hasPeriod(t)}));
+    $("#eState").textContent = res.problems.length ? res.problems.join("；")
+      : `识别到 ${EHR.length} 条出差，默认勾选已审批通过、且还没加过的。请只勾选这次要报销的。`;
+    renderEhr();
+  }catch(e){ $("#eState").textContent = "识别失败：" + e.message; }
+}
+function renderEhr(){
+  const md = (d, t) => `${shortDate(d)} ${t}`;
+  $("#eList").innerHTML = EHR.map((t,i)=>`<label class="etrip ${t.have||!t.approved?"off":""}">
+      <input type="checkbox" data-e="${i}" ${t.on?"checked":""} ${t.have?"disabled":""}>
+      <div><div>${md(t.start,t.start_time)} – ${md(t.end,t.end_time)}
+          ${t.status?`<span class="chip ${t.approved?"c-gray":"c-bad"}" style="margin-left:6px">${esc(t.status)}</span>`:""}
+          ${t.have?'<span class="chip c-gray" style="margin-left:6px">已在报销日期中</span>':""}</div>
+        ${t.reason?`<div class="r">${esc(t.reason)}</div>`:""}
+        ${t.warning?`<div class="w">${esc(t.warning)}</div>`:""}</div>
+      <div class="n">${t.days} 天${t.ehr_days!=null&&t.ehr_days!==t.days?`<div class="faint" style="font-weight:400">EHR ${t.ehr_days} 天</div>`:""}</div>
+    </label>`).join("");
+  const on = EHR.filter(t=>t.on);
+  $("#eSum").textContent = on.length ? `选中 ${on.length} 段，共 ${on.reduce((a,t)=>a+t.days,0)} 天` : "";
+  $("#eAdd").disabled = !on.length;
+}
+$("#eList").addEventListener("change", e => { const i = e.target.dataset.e; if(i!=null){ EHR[i].on = e.target.checked; renderEhr(); } });
+$("#eAdd").onclick = () => {
+  const on = EHR.filter(t=>t.on && !hasPeriod(t));
+  for(const t of on) V.trip.periods.push({start:t.start, end:t.end, reason:t.reason, ehr_days:t.ehr_days});
+  closeEhr(); save().then(()=>toast(`已添加 ${on.length} 段日期`));
+};
+$("#ehrOpen").onclick = openEhr;
+$("#eClose").onclick = closeEhr; $("#eCancel").onclick = closeEhr;
+$("#eDrop").onclick = () => $("#eFile").click();
+$("#eFile").onchange = e => { readEhr(e.target.files[0]); e.target.value = ""; };
+$("#eDrop").addEventListener("dragover", e => { e.preventDefault(); $("#eDrop").classList.add("over"); });
+$("#eDrop").addEventListener("dragleave", () => $("#eDrop").classList.remove("over"));
+$("#eDrop").addEventListener("drop", e => { e.preventDefault(); $("#eDrop").classList.remove("over"); readEhr(e.dataTransfer.files[0]); });
+document.addEventListener("paste", e => {
+  if(!$("#ehr").classList.contains("on")) return;
+  const f = [...(e.clipboardData?.files||[])].find(f=>f.type.startsWith("image/"));
+  if(f){ e.preventDefault(); readEhr(f); }
+});
+document.addEventListener("keydown", e => { if(e.key==="Escape" && $("#ehr").classList.contains("on")) closeEhr(); });
 
 // ---------------- 2. import ----------------
 async function uploadFiles(files){

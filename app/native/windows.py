@@ -30,6 +30,7 @@ TEXT_SCORE = 0.3
 # name -> (detector generation, recognizer generation, recognizer language). Measured on real receipts: "en5" reads
 # printed dates and '£' far better, "ch4" is the better amount reader on some photos; together they catch each other.
 READERS = {"en5": ("PPOCRV5", "PPOCRV5", "EN"), "ch4": ("PPOCRV4", "PPOCRV4", "CH")}
+CHINESE_READERS = ["ch4"]     # Chinese screenshots (the EHR trip list): en5 cannot read Chinese
 
 _engines = {}
 _device = None                    # backend name from native.devices, decided on first use

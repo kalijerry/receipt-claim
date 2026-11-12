@@ -70,3 +70,8 @@ def pdf_fonts():
 def engine_info():
     """Which recognition engine produced the results (recorded by the benchmark)."""
     return impl().engine_info()
+
+
+def ocr_chinese(paths):
+    """OCR for Chinese screenshots (the EHR list): the reader that knows Chinese, alone."""
+    return impl().ocr(paths, getattr(impl(), "CHINESE_READERS", None))
